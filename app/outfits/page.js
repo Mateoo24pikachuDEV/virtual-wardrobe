@@ -5,11 +5,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
-import { useGarments } from '@/hooks/useGarments'
-import { useOutfits } from '@/hooks/useOutfits'
-import Navbar from '@/components/ui/Navbar'
-import Button from '@/components/ui/Button'
-import OutfitGrid from '@/components/outfits/OutfitGrid'
+import { useGarments } from '../../hooks/useGarments'
+import { useOutfits } from '../../hooks/useOutfits'
+import Navbar from '../../components/ui/Navbar'
+import Button from '../../components/ui/Button'
+import OutfitGrid from '../../components/outfits/OutfitGrid'
 
 const TABS = [
   { id: 'sugeridos', label: '✨ Sugeridos' },
