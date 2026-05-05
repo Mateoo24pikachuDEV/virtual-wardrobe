@@ -1,0 +1,46 @@
+/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 168 85 247;   /* purple-500 */
+    --color-surface: 255 255 255;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  /* Clase de tarjeta reutilizable */
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden;
+  }
+
+  /* Badge de categoría */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-gray-200 rounded-lg;
+  }
+}
+
+@layer utilities {
+  /* Scrollbar personalizado */
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+}
