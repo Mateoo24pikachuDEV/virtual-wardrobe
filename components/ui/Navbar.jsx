@@ -40,7 +40,7 @@ export default function Navbar() {
   const handleSignOut = async () => {
     setSigningOut(true)
     await signOut()
-    router.push('/login')
+    router.push('/auth/login')
   }
 
   // Inicial del usuario para el avatar

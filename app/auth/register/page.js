@@ -1,6 +1,7 @@
 // app/(auth)/register/page.js
 import RegisterForm from '@/components/auth/RegisterForm'
 
+
 export const metadata = { title: 'Crear cuenta — Virtual Wardrobe' }
 
 export default function RegisterPage() {
@@ -29,4 +30,6 @@ export default function RegisterPage() {
       </div>
     </main>
   )
+  
+  
 }

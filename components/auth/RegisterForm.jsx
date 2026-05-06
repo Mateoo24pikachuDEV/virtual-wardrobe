@@ -1,4 +1,3 @@
-// components/auth/RegisterForm.jsx
 'use client'
 
 import { useState } from 'react'
@@ -13,15 +12,15 @@ export default function RegisterForm() {
   const { signUp } = useAuth()
 
   const [form, setForm] = useState({
-    nombre:           '',
-    email:            '',
-    password:         '',
-    confirmPassword:  '',
+    nombre: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
   })
-  const [errors,    setErrors]    = useState({})
-  const [loading,   setLoading]   = useState(false)
-  const [success,   setSuccess]   = useState(false)
-  const [apiError,  setApiError]  = useState('')
+  const [errors, setErrors]     = useState({})
+  const [loading, setLoading]   = useState(false)
+  const [success, setSuccess]   = useState(false)
+  const [apiError, setApiError] = useState('')
 
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
@@ -31,10 +30,10 @@ export default function RegisterForm() {
 
   const validate = () => {
     const e = {}
-    if (!form.nombre.trim())    e.nombre = 'El nombre es obligatorio'
-    if (!form.email)            e.email  = 'El email es obligatorio'
+    if (!form.nombre.trim()) e.nombre = 'El nombre es obligatorio'
+    if (!form.email) e.email = 'El email es obligatorio'
     else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email no válido'
-    if (!form.password)         e.password = 'La contraseña es obligatoria'
+    if (!form.password) e.password = 'La contraseña es obligatoria'
     else if (form.password.length < 6) e.password = 'Mínimo 6 caracteres'
     if (form.password !== form.confirmPassword)
       e.confirmPassword = 'Las contraseñas no coinciden'
@@ -43,15 +42,22 @@ export default function RegisterForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
     const newErrors = validate()
-    if (Object.keys(newErrors).length) { setErrors(newErrors); return }
+    if (Object.keys(newErrors).length) {
+      setErrors(newErrors)
+      return
+    }
 
     setLoading(true)
-    const { error } = await signUp({
-      email:    form.email,
+
+    // ✅ IMPORTANTE: ahora usamos data también
+    const { data, error } = await signUp({
+      email: form.email,
       password: form.password,
-      nombre:   form.nombre.trim(),
+      nombre: form.nombre.trim(),
     })
+
     setLoading(false)
 
     if (error) {
@@ -63,11 +69,17 @@ export default function RegisterForm() {
       return
     }
 
-    // Supabase envía email de confirmación
-    setSuccess(true)
+    // ✅ REDIRECT INTELIGENTE
+    if (data?.session) {
+      router.push('/wardrobe')
+      router.refresh()
+    } else {
+      // Caso: confirmación por email activada
+      setSuccess(true)
+    }
   }
 
-  // ── Pantalla de éxito ───────────────────────────────────
+  // ── Pantalla de éxito ─────────────────────────────
   if (success) {
     return (
       <div className="text-center flex flex-col items-center gap-4 py-4">
@@ -76,6 +88,7 @@ export default function RegisterForm() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
           </svg>
         </div>
+
         <div>
           <h3 className="font-semibold text-gray-900 text-lg">¡Cuenta creada!</h3>
           <p className="text-sm text-gray-500 mt-1 max-w-xs">
@@ -83,8 +96,11 @@ export default function RegisterForm() {
             <strong>{form.email}</strong>. Confírmalo para acceder.
           </p>
         </div>
+
         <Link href="/login">
-          <Button variant="outline" size="md">Ir al inicio de sesión</Button>
+          <Button variant="outline" size="md">
+            Ir al inicio de sesión
+          </Button>
         </Link>
       </div>
     )

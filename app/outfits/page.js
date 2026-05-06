@@ -34,7 +34,7 @@ export default function OutfitsPage() {
   const [savedMsg,   setSavedMsg]   = useState('')
 
   if (!authLoading && !user) {
-    router.push('/login')
+    router.push('/auth/login')
     return null
   }
 
