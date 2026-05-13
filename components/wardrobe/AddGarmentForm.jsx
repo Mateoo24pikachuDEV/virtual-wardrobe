@@ -32,7 +32,7 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
     nombre:     '',
     categoria:  '',
     color:      '',
-    formalidad: '',
+    formalidad: [],
   })
   const [imagenFile,    setImagenFile]    = useState(null)
   const [previewUrl,    setPreviewUrl]    = useState(null)
@@ -47,6 +47,20 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
     setErrors((prev) => ({ ...prev, [e.target.name]: '' }))
     setSubmitError('')
   }
+  const toggleFormalidad = (value) => {
+  setForm((prev) => {
+    const existe = prev.formalidad.includes(value)
+
+    return {
+      ...prev,
+      formalidad: existe
+        ? prev.formalidad.filter((f) => f !== value)
+        : [...prev.formalidad, value],
+    }
+  })
+
+  setErrors((prev) => ({ ...prev, formalidad: '' }))
+}
 
   // Procesar archivo de imagen
   const handleFile = (file) => {
@@ -75,7 +89,8 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
     if (!form.nombre.trim()) e.nombre     = 'El nombre es obligatorio'
     if (!form.categoria)     e.categoria  = 'Selecciona una categoría'
     if (!form.color.trim())  e.color      = 'Indica el color principal'
-    if (!form.formalidad)    e.formalidad = 'Selecciona la formalidad'
+    if (form.formalidad.length === 0)
+      e.formalidad = 'Selecciona al menos una formalidad'
     return e
   }
 
@@ -87,7 +102,11 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
     setLoading(true)
     setSubmitError('')
 
-    const { error } = await onSubmit({ ...form, imagenFile })
+    const { error } = await onSubmit({
+      ...form,
+      formalidad: form.formalidad.join(','),
+      imagenFile,
+    })
 
     setLoading(false)
 
@@ -97,7 +116,12 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
     }
 
     // Limpiar formulario en éxito
-    setForm({ nombre: '', categoria: '', color: '', formalidad: '' })
+    setForm({
+    nombre: '',
+    categoria: '',
+    color: '',
+    formalidad: [],
+    })
     setImagenFile(null)
     setPreviewUrl(null)
   }
@@ -240,37 +264,49 @@ export default function AddGarmentForm({ onSubmit, onCancel }) {
         </div>
       </div>
 
-      {/* ── Formalidad ──────────────────────────────────────── */}
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-gray-700">
-          Formalidad <span className="text-red-500">*</span>
-        </label>
-        <div className="grid grid-cols-3 gap-2">
-          {FORMALIDADES.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => { setForm((p) => ({ ...p, formalidad: f.value })); setErrors((p) => ({ ...p, formalidad: '' })) }}
-              className={`
-                p-3 rounded-xl border text-center transition-all duration-150
-                ${form.formalidad === f.value
-                  ? 'border-purple-500 bg-purple-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-                }
-              `}
-            >
-              <div className="text-lg">{f.label.split(' ')[0]}</div>
-              <div className={`text-xs font-medium mt-0.5 ${form.formalidad === f.value ? 'text-purple-700' : 'text-gray-600'}`}>
-                {f.label.split(' ')[1]}
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5">{f.desc}</div>
-            </button>
-          ))}
-        </div>
-        {errors.formalidad && (
-          <p className="text-xs text-red-500">{errors.formalidad}</p>
-        )}
-      </div>
+  {/* ── Formalidad ──────────────────────────────────────── */}
+  <div className="flex flex-col gap-2">
+    <label className="text-sm font-medium text-gray-700">
+      Formalidad <span className="text-red-500">*</span>
+    </label>
+
+    <div className="grid grid-cols-3 gap-2">
+      {FORMALIDADES.map((f) => {
+        const active = form.formalidad.includes(f.value)
+
+        return (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => toggleFormalidad(f.value)}
+            className={`
+              p-3 rounded-xl border text-center transition-all duration-150
+              ${active
+                ? 'border-purple-500 bg-purple-50'
+                : 'border-gray-200 bg-white hover:border-gray-300'
+              }
+            `}
+          >
+            <div className="text-lg">{f.label.split(' ')[0]}</div>
+
+            <div className={`text-xs font-medium mt-0.5 ${
+              active ? 'text-purple-700' : 'text-gray-600'
+            }`}>
+              {f.label.split(' ')[1]}
+            </div>
+
+            <div className="text-xs text-gray-400 mt-0.5">
+              {f.desc}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+
+  {errors.formalidad && (
+    <p className="text-xs text-red-500">{errors.formalidad}</p>
+  )}
+</div>
 
       {/* ── Botones ──────────────────────────────────────────── */}
       <div className="flex gap-3 pt-2">
