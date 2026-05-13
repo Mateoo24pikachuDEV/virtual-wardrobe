@@ -98,10 +98,33 @@ export default function GarmentCard({ prenda, onDelete }) {
             <span className="text-xs text-gray-500 capitalize">{prenda.color}</span>
           </div>
 
-          {/* Formalidad */}
-          <span className={`badge ${formStyle.bg} ${formStyle.text}`}>
-            {formStyle.label}
-          </span>
+                  {/* Formalidades (multi) */}
+        <div className="flex gap-1 flex-wrap">
+          {(() => {
+            const formalidades = Array.isArray(prenda.formalidades) && prenda.formalidades.length > 0
+              ? prenda.formalidades
+              : prenda.formalidad ? [prenda.formalidad] : ['casual']
+
+            const allThree = formalidades.length === 3
+
+            if (allThree) {
+              return (
+                <span className="badge bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700">
+                  ✨ Universal
+                </span>
+              )
+            }
+
+            return formalidades.map((f) => {
+              const s = FORMALIDAD_STYLES[f] || FORMALIDAD_STYLES.casual
+              return (
+                <span key={f} className={`badge ${s.bg} ${s.text}`}>
+                  {s.label}
+                </span>
+              )
+            })
+          })()}
+        </div>
         </div>
       </div>
 
