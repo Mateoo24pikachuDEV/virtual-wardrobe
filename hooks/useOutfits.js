@@ -28,8 +28,12 @@ export function useOutfits(prendas = []) {
       return
     }
 
-    const sugerencias = generarOutfits(prendas)
-    setOutfits(sugerencias)
+  const sugerencias = generarOutfits(prendas)
+
+    console.log('PRENDAS:', prendas)
+    console.log('OUTFITS GENERADOS:', sugerencias)
+
+  setOutfits(sugerencias)
   }, [prendas])
 
   // -----------------------------------------------------------
