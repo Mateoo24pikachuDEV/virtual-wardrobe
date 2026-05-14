@@ -127,22 +127,24 @@ export default function OutfitScoreBreakdown({ outfit }) {
           ))}
 
           {/* Divider + Overall */}
-          <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-              Overall Score
-            </span>
-            <div className="flex items-center gap-2">
-              <div className="w-20 bg-gray-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500"
-                  style={{ width: `${breakdown.overall}%` }}
-                />
-              </div>
-              <span className="text-sm font-black text-gray-900 tabular-nums">
-                {breakdown.overall}
-              </span>
-            </div>
-          </div>
+<div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+  <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+    Overall Score
+  </span>
+
+  <div className="flex items-center gap-2">
+    <div className="w-24 bg-gray-100 rounded-full h-2 overflow-hidden">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-700"
+        style={{ width: `${breakdown.overall * 10}%` }}
+      />
+    </div>
+
+    <span className="text-sm font-black text-gray-900 tabular-nums">
+      {breakdown.overall}/10
+    </span>
+  </div>
+</div>
         </div>
       </div>
     </div>
