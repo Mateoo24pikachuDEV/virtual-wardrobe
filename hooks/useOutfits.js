@@ -264,12 +264,26 @@ export function useOutfits(prendas = []) {
     setLoading(false)
   }, [user, outfits, saveOutfit])
 
+  // -----------------------------------------------------------
+  // CREATE MANUAL OUTFIT — wrapper explícito sobre saveOutfit
+  // -----------------------------------------------------------
+  /**
+   * Crea un outfit marcado como 'manual'.
+   * Garantiza que source siempre sea 'manual' sin depender del caller.
+   *
+   * @param {Object} outfit - misma estructura que saveOutfit
+   */
+  const createManualOutfit = useCallback(async (outfit) => {
+    return saveOutfit({ ...outfit, source: 'manual' })
+  }, [saveOutfit])
+
   return {
     outfits,
     outfitsGuardados,
     loading,
     error,
     saveOutfit,
+    createManualOutfit,      // ← nuevo
     deleteOutfit,
     updateOutfitAccessories,
     syncTopOutfits,

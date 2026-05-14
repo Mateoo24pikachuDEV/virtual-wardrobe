@@ -88,7 +88,26 @@ export default function OutfitCard({ outfit, onSave, onDelete, isSaved = false }
   }
 
   return (
-    <div className="card p-4 flex flex-col gap-4 hover:shadow-md transition-shadow duration-200">
+<div className="card p-4 flex flex-col gap-4 hover:shadow-md transition-shadow duration-200">
+
+      {/* Badge source */}
+      {outfit.source && (
+        <div className="flex items-center justify-between -mb-1">
+          <span className={`
+            text-xs font-medium px-2 py-0.5 rounded-full
+            ${outfit.source === 'manual'
+              ? 'bg-blue-100 text-blue-700'
+              : 'bg-gray-100 text-gray-500'}
+          `}>
+            {outfit.source === 'manual' ? '✏️ Manual' : '✨ Auto'}
+          </span>
+          {outfit.formalidades_outfit?.length > 0 && (
+            <span className="text-xs text-gray-400 capitalize">
+              {outfit.formalidades_outfit.join(' · ')}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Prendas del outfit */}
       <div className="flex items-start justify-around gap-2">
