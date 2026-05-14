@@ -21,19 +21,19 @@ export default function OutfitBackground({ outfit }) {
     >
       {/* Blob 1 — esquina superior izquierda */}
       <div
-        className="absolute -top-8 -left-8 w-40 h-40 rounded-full blur-3xl opacity-70"
+        className="absolute -top-8 -left-8 w-40 h-40 rounded-full blur-[90px] opacity-90"
         style={{ backgroundColor: colors.blob1 }}
       />
 
       {/* Blob 2 — esquina inferior derecha */}
       <div
-        className="absolute -bottom-8 -right-8 w-40 h-40 rounded-full blur-3xl opacity-60"
+        className="absolute -bottom-8 -right-8 w-40 h-40 rounded-full blur-[90px] opacity-80"
         style={{ backgroundColor: colors.blob2 }}
       />
 
       {/* Blob 3 — centro superior, sutil */}
       <div
-        className="absolute -top-4 left-1/2 -translate-x-1/2 w-24 h-24 rounded-full blur-2xl opacity-30"
+        className="absolute -top-4 left-1/2 -translate-x-1/2 w-24 h-24 rounded-full blur-[70px] opacity-50"
         style={{ backgroundColor: colors.blob1 }}
       />
 
