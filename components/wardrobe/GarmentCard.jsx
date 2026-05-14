@@ -177,7 +177,6 @@ const WARMTH_BADGE = {
             })
           })()}
         </div>
-        </div>
       </div>
 
       {/* Overlay de confirmación de borrado */}
