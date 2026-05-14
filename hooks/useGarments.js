@@ -85,29 +85,33 @@ export function useGarments() {
       const color_familia = detectarFamiliaColor(formData.color)
 
       // ── 3. Insert ────────────────────────────────────────
-      const { data, error: insertError } = await supabase
-        .from('prendas')
-        .insert([{
-          user_id:      user.id,
-          nombre:       formData.nombre.trim(),
-          categoria:    formData.categoria,
-          color:        formData.color.trim().toLowerCase(),
-          color_familia,
-          // Mantener formalidad singular para backward compat
-          formalidad:   formalidades[0],
-          // Nuevo campo array
-          formalidades,
-          imagen_url,
-          storage_path,
-          warmth:       formData.warmth || null,
-        }])
-        .select()
-        .single()
+      const subcategoria = formData.categoria === 'accessory'
+        ? (formData.subcategoria || null)
+        : null
 
-      if (insertError) throw new Error(insertError.message)
+const { data, error: insertError } = await supabase
+  .from('prendas')
+  .insert([{
+    user_id:      user.id,
+    nombre:       formData.nombre.trim(),
+    categoria:    formData.categoria,
+    subcategoria,
+    color:        formData.color.trim().toLowerCase(),
+    color_familia,
+    formalidad:   formalidades[0], // temporal compatibilidad vieja
+    formalidades,
+    imagen_url,
+    storage_path,
+    warmth:       formData.warmth || null,
+  }])
+  .select()
+  .single()
 
-      setPrendas((prev) => [data, ...prev])
-      return { data, error: null }
+if (insertError) throw new Error(insertError.message)
+
+setPrendas((prev) => [data, ...prev])
+
+return { data, error: null }
 
     } catch (err) {
       setError(err.message)
@@ -168,11 +172,18 @@ export function useGarments() {
       const color_familia = detectarFamiliaColor(formData.color)
 
       // ── 3. Update ────────────────────────────────────────
+      // subcategoria solo es válida para accesorios
+      const subcategoria = formData.categoria === 'accessory'
+        ? (formData.subcategoria || null)
+        : null
+
       const { data, error: updateError } = await supabase
         .from('prendas')
         .update({
+          user_id:      user.id,
           nombre:       formData.nombre.trim(),
           categoria:    formData.categoria,
+          subcategoria,
           color:        formData.color.trim().toLowerCase(),
           color_familia,
           formalidad:   formalidades[0],

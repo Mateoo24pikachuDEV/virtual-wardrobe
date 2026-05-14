@@ -5,13 +5,14 @@ import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
-import { FORMALIDADES_VALIDAS } from '@/lib/outfitEngine'
+import { FORMALIDADES_VALIDAS, ACCESSORY_SUBCATEGORIES } from '@/lib/outfitEngine'
 
 const CATEGORIAS = [
   { value: 'top',       label: '👕 Top / Camiseta'   },
   { value: 'bottom',    label: '👖 Bottom / Pantalón' },
   { value: 'shoes',     label: '👟 Zapatos'           },
   { value: 'outerwear', label: '🧥 Abrigo / Chaqueta' },
+  { value: 'accessory', label: '👜 Accesorio'         },
 ]
 
 const FORMALIDADES = [
@@ -33,11 +34,12 @@ const WARMTH_OPTIONS = [
 ]
 
 const FORM_INITIAL = {
-  nombre:      '',
-  categoria:   '',
-  color:       '',
-  formalidades: [],   // ← array multi-select
-  warmth:      '',
+  nombre:       '',
+  categoria:    '',
+  subcategoria: '',   // solo para accesorios
+  color:        '',
+  formalidades: [],
+  warmth:       '',
 }
 
 /**
@@ -78,6 +80,7 @@ export default function AddGarmentForm({
       setForm({
         nombre:       initialData.nombre       || '',
         categoria:    initialData.categoria    || '',
+        subcategoria: initialData.subcategoria || '',
         color:        initialData.color        || '',
         formalidades,
         warmth:       initialData.warmth       || '',
@@ -150,9 +153,11 @@ export default function AddGarmentForm({
   // ── Validación ────────────────────────────────────────────
   const validate = () => {
     const e = {}
-    if (!form.nombre.trim())         e.nombre      = 'El nombre es obligatorio'
-    if (!form.categoria)             e.categoria   = 'Selecciona una categoría'
-    if (!form.color.trim())          e.color       = 'Indica el color principal'
+    if (!form.nombre.trim())   e.nombre    = 'El nombre es obligatorio'
+    if (!form.categoria)       e.categoria = 'Selecciona una categoría'
+    if (form.categoria === 'accessory' && !form.subcategoria)
+      e.subcategoria = 'Selecciona el tipo de accesorio'
+    if (!form.color.trim())    e.color     = 'Indica el color principal'
     if (form.formalidades.length === 0)
       e.formalidades = 'Selecciona al menos una formalidad'
     return e
@@ -304,8 +309,45 @@ export default function AddGarmentForm({
             </button>
           ))}
         </div>
-        {errors.categoria && <p className="text-xs text-red-500">{errors.categoria}</p>}
+{errors.categoria && <p className="text-xs text-red-500">{errors.categoria}</p>}
       </div>
+
+      {/* ── SUBCATEGORÍA (solo para accesorios) ────────────── */}
+      {form.categoria === 'accessory' && (
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-gray-700">
+            Tipo de accesorio <span className="text-red-500">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {ACCESSORY_SUBCATEGORIES.map((sub) => (
+              <button
+                key={sub.value}
+                type="button"
+                onClick={() => {
+                  setForm((p) => ({ ...p, subcategoria: sub.value }))
+                  setErrors((p) => ({ ...p, subcategoria: '' }))
+                }}
+                className={`
+                  p-3 rounded-xl border text-sm font-medium text-left
+                  flex items-center gap-2 transition-all duration-150
+                  ${form.subcategoria === sub.value
+                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                  }
+                `}
+              >
+                <span>{sub.label}</span>
+                {sub.climatic && (
+                  <span className="ml-auto text-xs text-gray-400" title="Influye en clima">🌡️</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {errors.subcategoria && (
+            <p className="text-xs text-red-500">{errors.subcategoria}</p>
+          )}
+        </div>
+      )}
 
       {/* ── COLOR ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-2">

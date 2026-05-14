@@ -4,11 +4,12 @@
 import GarmentCard from './GarmentCard'
 
 const FILTROS_CATEGORIA = [
-  { value: 'all',       label: 'Todas'   },
-  { value: 'top',       label: 'Tops'    },
-  { value: 'bottom',    label: 'Bottoms' },
-  { value: 'shoes',     label: 'Zapatos' },
-  { value: 'outerwear', label: 'Abrigos' },
+  { value: 'all',       label: 'Todas'      },
+  { value: 'top',       label: 'Tops'       },
+  { value: 'bottom',    label: 'Bottoms'    },
+  { value: 'shoes',     label: 'Zapatos'    },
+  { value: 'outerwear', label: 'Abrigos'    },
+  { value: 'accessory', label: 'Accesorios' },
 ]
 
 const FILTROS_FORMALIDAD = [
@@ -28,7 +29,7 @@ export default function GarmentGrid({
   setFiltroFormalidad,
 }) {
   // Filtrado
-  const prendasFiltradas = prendas.filter((p) => {
+  const prendasFiltradas = prendas.filter(Boolean).filter((p) => {
     const porCategoria  = filtroCategoria  === 'all' || p.categoria  === filtroCategoria
     const porFormalidad = filtroFormalidad === 'all' || p.formalidad === filtroFormalidad
     return porCategoria && porFormalidad
@@ -129,13 +130,15 @@ export default function GarmentGrid({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {prendasFiltradas.map((prenda) => (
+          {prendasFiltradas
+            .filter(Boolean)
+            .map((prenda) => (
             <GarmentCard
-              key={prenda.id}
-              prenda={prenda}
-              onDelete={onDelete}
-            />
-          ))}
+            key={prenda.id}
+            prenda={prenda}
+            onDelete={onDelete}
+    />
+))}
         </div>
       )}
     </div>

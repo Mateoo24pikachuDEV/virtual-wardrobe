@@ -11,6 +11,12 @@ const CATEGORIA_STYLES = {
   bottom:    { label: 'Bottom',    bg: 'bg-green-100',  text: 'text-green-700'  },
   shoes:     { label: 'Zapatos',   bg: 'bg-orange-100', text: 'text-orange-700' },
   outerwear: { label: 'Abrigo',    bg: 'bg-purple-100', text: 'text-purple-700' },
+  accessory: { label: 'Accesorio', bg: 'bg-pink-100',   text: 'text-pink-700'   },
+}
+
+const SUBCATEGORIA_LABELS = {
+  hat:     '🧢', scarf:   '🧣', jewelry: '💍',
+  watch:   '⌚', bag:     '👜', glasses: '🕶️', gloves:  '🧤',
 }
 
 const FORMALIDAD_STYLES = {
@@ -89,7 +95,14 @@ export default function GarmentCard({ prenda, onDelete }) {
 
       {/* Info */}
       <div className="p-3 flex flex-col gap-2">
-        <p className="font-medium text-gray-900 text-sm truncate">{prenda.nombre}</p>
+        <div className="flex items-center gap-1.5">
+          {prenda.subcategoria && (
+            <span className="text-base flex-shrink-0">
+              {SUBCATEGORIA_LABELS[prenda.subcategoria] || '🎁'}
+            </span>
+          )}
+          <p className="font-medium text-gray-900 text-sm truncate">{prenda.nombre}</p>
+        </div>
 
         <div className="flex items-center justify-between">
           {/* Color */}

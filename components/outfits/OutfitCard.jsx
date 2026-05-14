@@ -5,7 +5,13 @@ import Image from 'next/image'
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
 
+const SUBCATEGORIA_LABELS = {
+  hat: '🧢', scarf: '🧣', jewelry: '💍',
+  watch: '⌚', bag: '👜', glasses: '🕶️', gloves: '🧤',
+}
+
 // Barra de score con color dinámico
+
 function ScoreBar({ score }) {
   const color =
     score >= 80 ? 'bg-green-500'  :
@@ -96,6 +102,25 @@ export default function OutfitCard({ outfit, onSave, onDelete, isSaved = false }
 
       {/* Score */}
       <ScoreBar score={outfit.score} />
+
+      {/* Accesorios sugeridos */}
+      {outfit._accessories && outfit._accessories.length > 0 && (
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-pink-50 rounded-lg border border-pink-100">
+          <span className="text-xs text-pink-500 font-medium flex-shrink-0">+</span>
+          <div className="flex flex-wrap gap-1">
+            {outfit._accessories.map((acc) => (
+              <span
+                key={acc.id}
+                className="text-xs text-pink-700 bg-pink-100 px-2 py-0.5 rounded-full flex items-center gap-1"
+                title={acc.nombre}
+              >
+                {SUBCATEGORIA_LABELS[acc.subcategoria] || '🎁'}
+                <span className="max-w-[60px] truncate">{acc.nombre}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Metainfo */}
       <div className="flex items-center justify-between text-xs text-gray-400">

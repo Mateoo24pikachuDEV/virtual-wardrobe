@@ -41,7 +41,11 @@ export default function WardrobePage() {
     syncTopOutfits()
 
     setModalOpen(false)
-    setSuccessMsg(`"${data.nombre}" añadida correctamente 🎉`)
+    if (data) {
+      setSuccessMsg(`"${data.nombre}" añadida correctamente 🎉`)
+    } else {
+      setSuccessMsg('Prenda añadida correctamente 🎉')
+    }
     setTimeout(() => setSuccessMsg(''), 4000)
     return { data, error: null }
   }
@@ -101,14 +105,15 @@ export default function WardrobePage() {
 
         {/* Estadísticas rápidas */}
         {prendas.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-            {[
-              { cat: 'top',       emoji: '👕', label: 'Tops'    },
-              { cat: 'bottom',    emoji: '👖', label: 'Bottoms' },
-              { cat: 'shoes',     emoji: '👟', label: 'Zapatos' },
-              { cat: 'outerwear', emoji: '🧥', label: 'Abrigos' },
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
+{[
+              { cat: 'top',       emoji: '👕', label: 'Tops'       },
+              { cat: 'bottom',    emoji: '👖', label: 'Bottoms'    },
+              { cat: 'shoes',     emoji: '👟', label: 'Zapatos'    },
+              { cat: 'outerwear', emoji: '🧥', label: 'Abrigos'    },
+              { cat: 'accessory', emoji: '👜', label: 'Accesorios' },
             ].map(({ cat, emoji, label }) => {
-              const count = prendas.filter((p) => p.categoria === cat).length
+              const count = prendas.filter((p) => p?.categoria === cat).length
               return (
                 <button
                   key={cat}
