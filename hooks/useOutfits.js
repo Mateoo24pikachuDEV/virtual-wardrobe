@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import supabase from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { generarOutfits } from '@/lib/outfitEngine'
+import {generarOutfits, calcularDatosTermicos } from '@/lib/outfitEngine'
 
 // Campos que seleccionamos de cada prenda en los joins
 const PRENDA_FIELDS = [
@@ -96,17 +96,31 @@ export function useOutfits(prendas = []) {
     if (!user) return { error: 'No hay usuario autenticado' }
 
     try {
-      // 1. Insertar fila en outfits
+// 1. Calcular datos térmicos a partir de las referencias de prenda
+      //    (siempre frescos, nunca stale)
+      const { nivel_termico, seasons } = outfit._top
+        ? calcularDatosTermicos(
+            outfit._top,
+            outfit._bottom,
+            outfit._shoes,
+            outfit._outerwear    || null,
+            outfit._accessories  || []
+          )
+        : { nivel_termico: null, seasons: [] }
+
+      // 2. Insertar fila en outfits
       const { data: outfitData, error: insertError } = await supabase
         .from('outfits')
         .insert([{
-          user_id:      user.id,
-          top_id:       outfit.top_id,
-          bottom_id:    outfit.bottom_id,
-          shoes_id:     outfit.shoes_id,
-          outerwear_id: outfit.outerwear_id || null,
-          score:        outfit.score,
-          source:       outfit.source || 'generated',
+          user_id:       user.id,
+          top_id:        outfit.top_id,
+          bottom_id:     outfit.bottom_id,
+          shoes_id:      outfit.shoes_id,
+          outerwear_id:  outfit.outerwear_id || null,
+          score:         outfit.score,
+          source:        outfit.source || 'generated',
+          nivel_termico,
+          seasons,
         }])
         .select()
         .single()
@@ -234,15 +248,28 @@ export function useOutfits(prendas = []) {
     if (!user) return { error: 'No hay usuario autenticado' }
 
     try {
+// ── 0. Recalcular datos térmicos con las nuevas prendas ──
+      const { nivel_termico, seasons } = outfitData._top
+        ? calcularDatosTermicos(
+            outfitData._top,
+            outfitData._bottom,
+            outfitData._shoes,
+            outfitData._outerwear    || null,
+            outfitData._accessories  || []
+          )
+        : { nivel_termico: null, seasons: [] }
+
       // ── 1. Actualizar prenda principal ───────────────────
       const { data: outfitRecord, error: updateError } = await supabase
         .from('outfits')
         .update({
-          top_id:       outfitData.top_id,
-          bottom_id:    outfitData.bottom_id,
-          shoes_id:     outfitData.shoes_id,
-          outerwear_id: outfitData.outerwear_id || null,
-          score:        outfitData.score,
+          top_id:        outfitData.top_id,
+          bottom_id:     outfitData.bottom_id,
+          shoes_id:      outfitData.shoes_id,
+          outerwear_id:  outfitData.outerwear_id || null,
+          score:         outfitData.score,
+          nivel_termico,
+          seasons,
         })
         .eq('id', outfitId)
         .eq('user_id', user.id)

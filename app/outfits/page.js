@@ -8,13 +8,15 @@ import { useAuth } from '@/context/AuthContext'
 import { useGarments } from '@/hooks/useGarments'
 import { useOutfits } from '@/hooks/useOutfits'
 import { useCollections } from '@/hooks/useCollections'
-import AddToCollectionModal from '@/components/collections/AddToCollectionModal'
+import { SEASON_CONFIG } from '@/lib/outfitEngine'
 import Navbar from '@/components/ui/Navbar'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
 import OutfitGrid from '@/components/outfits/OutfitGrid'
 import ManualOutfitBuilder from '@/components/outfits/ManualOutfitBuilder'
+import AddToCollectionModal from '@/components/collections/AddToCollectionModal'
 
+// ── Constantes ──────────────────────────────────────────────
 const TABS = [
   { id: 'sugeridos', label: '✨ Sugeridos' },
   { id: 'guardados', label: '🔖 Guardados'  },
@@ -26,6 +28,56 @@ const SOURCE_FILTERS = [
   { id: 'manual',    label: '✏️ Manual' },
 ]
 
+// ── Subcomponente: barra de filtro por estación ─────────────
+function SeasonFilterBar({ seasonFilter, onChange, counts = {} }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-medium text-gray-500 uppercase tracking-wide flex-shrink-0">
+        Estación
+      </span>
+      <div className="flex gap-1 flex-wrap">
+        {/* Todos */}
+        <button
+          onClick={() => onChange(null)}
+          className={`
+            px-3 py-1 rounded-full text-xs font-medium transition-all
+            ${!seasonFilter
+              ? 'bg-gray-700 text-white shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+          `}
+        >
+          🌍 Todas
+        </button>
+
+        {/* Una por estación */}
+        {Object.entries(SEASON_CONFIG).map(([key, cfg]) => {
+          const count = counts[key] ?? 0
+          const active = seasonFilter === key
+          return (
+            <button
+              key={key}
+              onClick={() => onChange(active ? null : key)}
+              className={`
+                px-3 py-1 rounded-full text-xs font-medium transition-all
+                inline-flex items-center gap-1
+                ${active
+                  ? `${cfg.color} border shadow-sm`
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+              `}
+            >
+              {cfg.emoji} {cfg.label}
+              {count > 0 && (
+                <span className="opacity-70">({count})</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Página principal ────────────────────────────────────────
 export default function OutfitsPage() {
   const router                         = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -40,13 +92,7 @@ export default function OutfitsPage() {
     deleteOutfit,
     syncTopOutfits,
   } = useOutfits(prendas)
-
-  // ── Modales ────────────────────────────────────────────────
-  const [manualBuilderOpen, setManualBuilderOpen] = useState(false)
-  const [editingOutfit,     setEditingOutfit]     = useState(null)   // outfit en edición o null
-
-  // ── UI state ───────────────────────────────────────────────
-const {
+  const {
     collections,
     createCollection,
     addOutfitToCollection,
@@ -54,58 +100,94 @@ const {
     getOutfitCollectionIds,
   } = useCollections()
 
-  const [tab,               setTab]               = useState('sugeridos')
-  const [sourceFilter,      setSourceFilter]       = useState('all')
-  const [syncing,           setSyncing]            = useState(false)
-  const [collectionOutfit,  setCollectionOutfit]   = useState(null) // outfit para el modal de colecciones
-  const [toast,             setToast]              = useState({ visible: false, msg: '', type: 'success' })
+  // ── Modales ─────────────────────────────────────────────────
+  const [manualBuilderOpen, setManualBuilderOpen] = useState(false)
+  const [editingOutfit,     setEditingOutfit]     = useState(null)
+  const [collectionOutfit,  setCollectionOutfit]  = useState(null)
+
+  // ── Filtros ─────────────────────────────────────────────────
+  const [tab,          setTab]          = useState('sugeridos')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [seasonFilter, setSeasonFilter] = useState(null)   // null = todas
+
+  // ── UI ──────────────────────────────────────────────────────
+  const [syncing, setSyncing] = useState(false)
+  const [toast,   setToast]   = useState({ visible: false, msg: '', type: 'success' })
 
   if (!authLoading && !user) {
     router.push('/login')
     return null
   }
 
-  // ── Toast helper ────────────────────────────────────────────
   const showToast = (msg, type = 'success') => {
     setToast({ visible: true, msg, type })
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 4000)
   }
 
-  // ── Guardados filtrados por source ──────────────────────────
-  const guardadosFiltrados = useMemo(() =>
+  // ── Filtrado: Sugeridos ─────────────────────────────────────
+  const sugeridosFiltrados = useMemo(() => {
+    if (!seasonFilter) return outfits
+    return outfits.filter(
+      (o) => Array.isArray(o.seasons) && o.seasons.includes(seasonFilter)
+    )
+  }, [outfits, seasonFilter])
+
+  // ── Filtrado: Guardados por source ──────────────────────────
+  const guardadosPorSource = useMemo(() =>
     sourceFilter === 'all'
       ? outfitsGuardados
       : outfitsGuardados.filter((o) => o.source === sourceFilter),
     [outfitsGuardados, sourceFilter]
   )
 
-  // ── IDs guardados (para badge en sugeridos) ─────────────────
+  // ── Filtrado: Guardados por source + estación ───────────────
+  const guardadosFiltrados = useMemo(() => {
+    if (!seasonFilter) return guardadosPorSource
+    return guardadosPorSource.filter(
+      (o) => Array.isArray(o.seasons) && o.seasons.includes(seasonFilter)
+    )
+  }, [guardadosPorSource, seasonFilter])
+
+  // ── Contadores por estación (para badges en filter bar) ─────
+  const sugeridosSeasonCounts = useMemo(() =>
+    Object.keys(SEASON_CONFIG).reduce((acc, s) => ({
+      ...acc,
+      [s]: outfits.filter((o) => Array.isArray(o.seasons) && o.seasons.includes(s)).length,
+    }), {}),
+    [outfits]
+  )
+  const guardadosSeasonCounts = useMemo(() =>
+    Object.keys(SEASON_CONFIG).reduce((acc, s) => ({
+      ...acc,
+      [s]: guardadosPorSource.filter((o) => Array.isArray(o.seasons) && o.seasons.includes(s)).length,
+    }), {}),
+    [guardadosPorSource]
+  )
+
+  // ── IDs guardados (para badge "guardar" en sugeridos) ───────
   const savedKeys = useMemo(() => new Set(
     outfitsGuardados.map(
       (o) => `${o.top_id}-${o.bottom_id}-${o.shoes_id}-${o.outerwear_id || 'none'}`
     )
   ), [outfitsGuardados])
 
-  // ── Prendas mínimas para generar outfits ────────────────────
+  // ── Prendas mínimas ─────────────────────────────────────────
   const puedeGenerar =
     prendas.some((p) => p.categoria === 'top')    &&
     prendas.some((p) => p.categoria === 'bottom') &&
     prendas.some((p) => p.categoria === 'shoes')
 
-  // ── Contadores ─────────────────────────────────────────────
+  // ── Contadores ──────────────────────────────────────────────
   const countGuardados = outfitsGuardados.length
   const countManuales  = outfitsGuardados.filter((o) => o.source === 'manual').length
 
-  // ── Handlers ───────────────────────────────────────────────
-
-  /** Guardar un outfit sugerido (automático) */
+  // ── Handlers ────────────────────────────────────────────────
   const handleSaveSuggested = async (outfit) => {
     const { error } = await saveOutfit(outfit)
     if (!error) showToast('Outfit guardado 🔖')
     else showToast(error, 'error')
   }
 
-  /** Crear outfit manual (desde builder en modo creación) */
   const handleCreateManual = async (outfitData) => {
     const { error } = await createManualOutfit(outfitData)
     if (error) return { error }
@@ -116,32 +198,21 @@ const {
     return { error: null }
   }
 
-  /** Abrir modal de edición con el outfit seleccionado */
-  const handleOpenEdit = (outfit) => {
-    setEditingOutfit(outfit)
-  }
-
-  /** Guardar cambios de edición */
   const handleUpdateOutfit = async (outfitData) => {
-    if (!editingOutfit) return { error: 'No hay outfit seleccionado' }
-
+    if (!editingOutfit) return { error: 'Sin outfit seleccionado' }
     const { error } = await updateOutfit(editingOutfit.id, outfitData)
-
     if (error) return { error }
-
-    showToast(`Outfit actualizado ✏️ — nuevo score: ${outfitData.score}/100`)
+    showToast(`Outfit actualizado ✏️ · ${outfitData.score}/100`)
     setEditingOutfit(null)
     return { error: null }
   }
 
-  /** Eliminar outfit guardado */
   const handleDeleteOutfit = async (outfitId) => {
     const { error } = await deleteOutfit(outfitId)
     if (!error) showToast('Outfit eliminado')
     else showToast(error, 'error')
   }
 
-  /** Sincronizar top 5 automáticos */
   const handleSync = async () => {
     setSyncing(true)
     await syncTopOutfits()
@@ -156,7 +227,7 @@ const {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* ── Header ─────────────────────────────────────────── */}
+        {/* Header */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Outfits</h1>
@@ -172,7 +243,6 @@ const {
               size="md"
               onClick={() => setManualBuilderOpen(true)}
               disabled={!puedeGenerar}
-              title={!puedeGenerar ? 'Necesitas al menos 1 top, 1 bottom y 1 zapato' : ''}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -180,31 +250,23 @@ const {
               Crear outfit
             </Button>
 
-            <Button
-              variant="secondary"
-              size="md"
-              loading={syncing}
-              onClick={handleSync}
-              disabled={outfits.length === 0}
-            >
+            <Button variant="secondary" size="md" loading={syncing} onClick={handleSync} disabled={outfits.length === 0}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11
-                     11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
               Sync top 5
             </Button>
           </div>
         </div>
 
-        {/* ── Toast ──────────────────────────────────────────── */}
+        {/* Toast */}
         {toast.visible && (
-          <div className={`
-            mb-6 p-4 rounded-xl text-sm flex items-center gap-2 border
+          <div className={`mb-6 p-4 rounded-xl text-sm flex items-center gap-2 border
             ${toast.type === 'success'
               ? 'bg-green-50 border-green-200 text-green-700'
-              : 'bg-red-50 border-red-200 text-red-700'}
-          `}>
+              : 'bg-red-50 border-red-200 text-red-700'}`}
+          >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               {toast.type === 'success'
                 ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
@@ -215,7 +277,7 @@ const {
           </div>
         )}
 
-        {/* ── Aviso prendas insuficientes ────────────────────── */}
+        {/* Aviso prendas insuficientes */}
         {!puedeGenerar && (
           <div className="mb-6 p-5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
@@ -232,8 +294,8 @@ const {
           </div>
         )}
 
-        {/* ── Tabs ───────────────────────────────────────────── */}
-        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit mb-6">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit mb-5">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -246,8 +308,7 @@ const {
             >
               {t.label}
               {t.id === 'guardados' && countGuardados > 0 && (
-                <span className="inline-flex items-center justify-center w-5 h-5 text-xs
-                                 bg-purple-100 text-purple-700 rounded-full">
+                <span className="inline-flex items-center justify-center w-5 h-5 text-xs bg-purple-100 text-purple-700 rounded-full">
                   {countGuardados}
                 </span>
               )}
@@ -257,51 +318,94 @@ const {
 
         {/* ── Tab: Sugeridos ─────────────────────────────────── */}
         {tab === 'sugeridos' && (
-          <OutfitGrid
-            outfits={outfits}
-            loading={loading}
-            onSave={handleSaveSuggested}
-            onDelete={() => {}}
-            onAddToCollection={(outfit) => outfit.id && setCollectionOutfit(outfit)}
-            savedIds={outfitsGuardados.map((o) => o.id)}
-            emptyMessage="No hay sugerencias todavía"
-            emptySubMessage="Añade tops, bottoms y zapatos en Mi Armario para empezar."
-          />
+          <div className="flex flex-col gap-5">
+
+            {/* Filtro de estación */}
+            {outfits.length > 0 && (
+              <div className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+                <SeasonFilterBar
+                  seasonFilter={seasonFilter}
+                  onChange={setSeasonFilter}
+                  counts={sugeridosSeasonCounts}
+                />
+              </div>
+            )}
+
+            {/* Info sobre prendas sin warmth */}
+            {seasonFilter && sugeridosFiltrados.length < outfits.length && (
+              <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {outfits.length - sugeridosFiltrados.length} outfits ocultos porque sus prendas no tienen nivel de abrigo definido.
+                <Link href="/wardrobe" className="font-medium underline ml-1">Editarlas</Link>
+              </div>
+            )}
+
+            <OutfitGrid
+              outfits={sugeridosFiltrados}
+              loading={loading}
+              onSave={handleSaveSuggested}
+              onDelete={() => {}}
+              onAddToCollection={(outfit) => outfit.id && setCollectionOutfit(outfit)}
+              savedIds={outfitsGuardados.map((o) => o.id)}
+              emptyMessage={seasonFilter ? `Sin outfits para ${SEASON_CONFIG[seasonFilter]?.label}` : 'No hay sugerencias todavía'}
+              emptySubMessage={
+                seasonFilter
+                  ? 'Añade nivel de abrigo a tus prendas o cambia el filtro de estación.'
+                  : 'Añade tops, bottoms y zapatos en Mi Armario para empezar.'
+              }
+            />
+          </div>
         )}
 
         {/* ── Tab: Guardados ─────────────────────────────────── */}
         {tab === 'guardados' && (
           <div className="flex flex-col gap-5">
 
-            {/* Filtro source */}
+            {/* Filtros de source + estación */}
             {outfitsGuardados.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Origen
-                </span>
-                <div className="flex gap-1">
-                  {SOURCE_FILTERS.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => setSourceFilter(f.id)}
-                      className={`
-                        px-3 py-1 rounded-full text-xs font-medium transition-all
-                        ${sourceFilter === f.id
-                          ? 'bg-purple-600 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
-                      `}
-                    >
-                      {f.label}
-                      {' '}
-                      <span className="opacity-70">
-                        ({f.id === 'all'
-                          ? outfitsGuardados.length
-                          : outfitsGuardados.filter((o) => o.source === f.id).length
-                        })
-                      </span>
-                    </button>
-                  ))}
+              <div className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+
+                {/* Source */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Origen
+                  </span>
+                  <div className="flex gap-1 flex-wrap">
+                    {SOURCE_FILTERS.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setSourceFilter(f.id)}
+                        className={`
+                          px-3 py-1 rounded-full text-xs font-medium transition-all
+                          ${sourceFilter === f.id
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}
+                        `}
+                      >
+                        {f.label}{' '}
+                        <span className="opacity-70">
+                          ({f.id === 'all'
+                            ? outfitsGuardados.length
+                            : outfitsGuardados.filter((o) => o.source === f.id).length
+                          })
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Separador */}
+                <div className="h-px bg-gray-100"/>
+
+                {/* Estación */}
+                <SeasonFilterBar
+                  seasonFilter={seasonFilter}
+                  onChange={setSeasonFilter}
+                  counts={guardadosSeasonCounts}
+                />
               </div>
             )}
 
@@ -310,23 +414,98 @@ const {
               loading={loading}
               onSave={() => {}}
               onDelete={handleDeleteOutfit}
-              onEdit={handleOpenEdit}
+              onEdit={(outfit) => setEditingOutfit(outfit)}
               onAddToCollection={(outfit) => setCollectionOutfit(outfit)}
               savedIds={guardadosFiltrados.map((o) => o.id)}
               emptyMessage={
-                sourceFilter === 'manual'    ? 'No tienes outfits manuales' :
-                sourceFilter === 'generated' ? 'No tienes outfits automáticos guardados' :
-                                               'No tienes outfits guardados'
+                seasonFilter
+                  ? `Sin outfits guardados para ${SEASON_CONFIG[seasonFilter]?.label}`
+                  : sourceFilter === 'manual'
+                    ? 'No tienes outfits manuales'
+                    : 'No tienes outfits guardados'
               }
               emptySubMessage={
-                sourceFilter === 'manual'
-                  ? 'Crea tu primer outfit manual con el botón "Crear outfit".'
+                seasonFilter
+                  ? 'Ajusta los filtros de estación u origen.'
                   : 'Ve a Sugeridos y guarda los que más te gusten, o crea uno manual.'
               }
             />
           </div>
         )}
       </main>
+
+      {/* ── MODAL: Crear outfit manual ──────────────────────── */}
+      <Modal
+        isOpen={manualBuilderOpen}
+        onClose={() => setManualBuilderOpen(false)}
+        title="Crear outfit manual"
+        size="lg"
+        closeOnBackdrop={false}
+      >
+        <ManualOutfitBuilder
+          prendas={prendas}
+          onSave={handleCreateManual}
+          onCancel={() => setManualBuilderOpen(false)}
+          isEditing={false}
+        />
+      </Modal>
+
+      {/* ── MODAL: Editar outfit ────────────────────────────── */}
+      <Modal
+        isOpen={!!editingOutfit}
+        onClose={() => setEditingOutfit(null)}
+        title={editingOutfit ? `Editando outfit · Score actual: ${editingOutfit.score}/100` : 'Editar outfit'}
+        size="lg"
+        closeOnBackdrop={false}
+      >
+        {editingOutfit && (
+          <div className="flex flex-col gap-0">
+            <div className="flex items-center gap-3 p-3 mb-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex gap-1">
+                {[editingOutfit._top, editingOutfit._bottom, editingOutfit._shoes]
+                  .filter(Boolean).map((p, i) => (
+                    <div key={i} className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 border border-gray-100 flex-shrink-0">
+                      {p.imagen_url
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover"/>
+                        : <div className="w-full h-full flex items-center justify-center text-sm">
+                            {p.categoria === 'top' ? '👕' : p.categoria === 'bottom' ? '👖' : '👟'}
+                          </div>
+                      }
+                    </div>
+                  ))}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full ${editingOutfit.score >= 80 ? 'bg-green-500' : editingOutfit.score >= 60 ? 'bg-yellow-500' : 'bg-orange-400'}`}
+                      style={{ width: `${editingOutfit.score}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700">{editingOutfit.score}/100</span>
+                </div>
+                {editingOutfit.seasons?.length > 0 && (
+                  <div className="flex gap-1 mt-1">
+                    {editingOutfit.seasons.map((s) => (
+                      <span key={s} className="text-xs text-gray-400">
+                        {s === 'summer' ? '☀️' : s === 'spring' ? '🌸' : s === 'autumn' ? '🍂' : '❄️'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <ManualOutfitBuilder
+              prendas={prendas}
+              onSave={handleUpdateOutfit}
+              onCancel={() => setEditingOutfit(null)}
+              initialOutfit={editingOutfit}
+              isEditing
+            />
+          </div>
+        )}
+      </Modal>
 
       {/* ── MODAL: Añadir a colección ───────────────────────── */}
       <Modal
@@ -348,95 +527,6 @@ const {
               showToast('Colecciones actualizadas 📁')
             }}
           />
-        )}
-      </Modal>
-
-      {/* ── MODAL: Crear outfit manual ──────────────────────── */}
-      <Modal
-        isOpen={manualBuilderOpen}
-        onClose={() => setManualBuilderOpen(false)}
-        title="Crear outfit manual"
-        size="lg"
-        closeOnBackdrop={false}
-      >
-        <ManualOutfitBuilder
-          prendas={prendas}
-          onSave={handleCreateManual}
-          onCancel={() => setManualBuilderOpen(false)}
-          isEditing={false}
-        />
-      </Modal>
-
-      {/* ── MODAL: Editar outfit guardado ───────────────────── */}
-      <Modal
-        isOpen={!!editingOutfit}
-        onClose={() => setEditingOutfit(null)}
-        title={editingOutfit
-          ? `Editando outfit · Score actual: ${editingOutfit.score}/100`
-          : 'Editar outfit'
-        }
-        size="lg"
-        closeOnBackdrop={false}
-      >
-        {/* Montamos el builder SOLO cuando editingOutfit existe para que
-            el useEffect de precarga se dispare correctamente */}
-        {editingOutfit && (
-          <div className="flex flex-col gap-0">
-
-            {/* Info rápida del outfit actual */}
-            <div className="flex items-center gap-3 p-3 mb-3 bg-gray-50 rounded-xl border border-gray-100">
-              <div className="flex gap-1">
-                {[editingOutfit._top, editingOutfit._bottom, editingOutfit._shoes]
-                  .filter(Boolean)
-                  .map((p, i) => (
-                    <div key={i} className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 border border-gray-100 flex-shrink-0">
-                      {p.imagen_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover"/>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-sm">
-                          {p.categoria === 'top' ? '👕' : p.categoria === 'bottom' ? '👖' : '👟'}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                }
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-500">Score actual</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full ${
-                        editingOutfit.score >= 80 ? 'bg-green-500' :
-                        editingOutfit.score >= 60 ? 'bg-yellow-500' : 'bg-orange-400'
-                      }`}
-                      style={{ width: `${editingOutfit.score}%` }}
-                    />
-                  </div>
-                  <span className="text-xs font-bold text-gray-700 flex-shrink-0">
-                    {editingOutfit.score}/100
-                  </span>
-                </div>
-              </div>
-              <span className={`
-                text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
-                ${editingOutfit.source === 'manual'
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'bg-gray-100 text-gray-500'}
-              `}>
-                {editingOutfit.source === 'manual' ? '✏️ Manual' : '✨ Auto'}
-              </span>
-            </div>
-
-            <ManualOutfitBuilder
-              prendas={prendas}
-              onSave={handleUpdateOutfit}
-              onCancel={() => setEditingOutfit(null)}
-              initialOutfit={editingOutfit}
-              isEditing={true}
-            />
-          </div>
         )}
       </Modal>
     </div>

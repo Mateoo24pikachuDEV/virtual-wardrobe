@@ -4,6 +4,39 @@
 import Image from 'next/image'
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
+import { labelNivelTermico } from '@/lib/outfitEngine'
+
+// Emojis y colores de estaciones (inline para no depender de tree-shaking de config)
+const SEASON_DISPLAY = {
+  summer: { emoji: '☀️', label: 'Verano',    cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  spring: { emoji: '🌸', label: 'Primavera', cls: 'bg-green-100  text-green-700  border-green-200'  },
+  autumn: { emoji: '🍂', label: 'Otoño',     cls: 'bg-orange-100 text-orange-700 border-orange-200' },
+  winter: { emoji: '❄️', label: 'Invierno',  cls: 'bg-blue-100   text-blue-700   border-blue-200'   },
+}
+
+// Barra de nivel térmico
+function TermoBar({ nivel }) {
+  if (nivel === null || nivel === undefined) return null
+
+  const color =
+    nivel <= 25  ? 'bg-yellow-400' :
+    nivel <= 50  ? 'bg-green-400'  :
+    nivel <= 75  ? 'bg-orange-400' : 'bg-blue-500'
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${nivel}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-400 flex-shrink-0 w-20 text-right">
+        {labelNivelTermico(nivel)}
+      </span>
+    </div>
+  )
+}
 
 const SUBCATEGORIA_LABELS = {
   hat: '🧢', scarf: '🧣', jewelry: '💍',
@@ -153,6 +186,33 @@ export default function OutfitCard({
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+{/* Sistema térmico */}
+      {outfit.nivel_termico !== null && outfit.nivel_termico !== undefined && (
+        <div className="flex flex-col gap-1.5">
+          {/* Barra de nivel */}
+          <TermoBar nivel={outfit.nivel_termico} />
+
+          {/* Badges de estación */}
+          {outfit.seasons && outfit.seasons.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {outfit.seasons.map((season) => {
+                const s = SEASON_DISPLAY[season]
+                if (!s) return null
+                return (
+                  <span
+                    key={season}
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full
+                                text-xs font-medium border ${s.cls}`}
+                  >
+                    {s.emoji} {s.label}
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -32,6 +32,12 @@ const FAMILIA_COLORS = {
   vibrante: 'bg-pink-400',
 }
 
+const WARMTH_BADGE = {
+  light:  { emoji: '🌤️', label: 'Ligero',   cls: 'bg-yellow-50 text-yellow-600 border-yellow-200' },
+  medium: { emoji: '🍂', label: 'Medio',    cls: 'bg-orange-50 text-orange-600 border-orange-200' },
+  heavy:  { emoji: '❄️', label: 'Abrigado', cls: 'bg-blue-50   text-blue-600   border-blue-200'   },
+}
+
   export default function GarmentCard({ prenda, onDelete, onEdit }) {
     const [deleting,    setDeleting]    = useState(false)
     const [imgError,    setImgError]    = useState(false)
@@ -132,7 +138,19 @@ const FAMILIA_COLORS = {
             <span className="text-xs text-gray-500 capitalize">{prenda.color}</span>
           </div>
 
-                  {/* Formalidades (multi) */}
+          {/* Warmth badge */}
+          {prenda.warmth && WARMTH_BADGE[prenda.warmth] && (
+            <span className={`
+              inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full
+              text-xs border ${WARMTH_BADGE[prenda.warmth].cls}
+            `}>
+              {WARMTH_BADGE[prenda.warmth].emoji}
+              <span className="hidden sm:inline">{WARMTH_BADGE[prenda.warmth].label}</span>
+            </span>
+          )}
+        </div>
+
+          {/* Formalidades (multi) */}
         <div className="flex gap-1 flex-wrap">
           {(() => {
             const formalidades = Array.isArray(prenda.formalidades) && prenda.formalidades.length > 0
