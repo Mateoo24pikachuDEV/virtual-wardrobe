@@ -5,6 +5,11 @@ import Image from 'next/image'
 import { useState } from 'react'
 import Button from '@/components/ui/Button'
 import { labelNivelTermico } from '@/lib/outfitEngine'
+import OutfitVisualLayout from './OutfitVisualLayout'
+import OutfitBackground from './OutfitBackground'
+import OutfitScoreBreakdown from './OutfitScoreBreakdown'
+import OutfitWhyWorks from './OutfitWhyWorks'
+import OutfitSeasonBadges from './OutfitSeasonBadges'
 
 // Emojis y colores de estaciones (inline para no depender de tree-shaking de config)
 const SEASON_DISPLAY = {
@@ -135,9 +140,16 @@ export default function OutfitCard({
     if (onAddToCollection) onAddToCollection(outfit)
   }
 
-  return (
-<div className="card p-4 flex flex-col gap-4 hover:shadow-md transition-shadow duration-200">
-
+return (
+  <div
+    className="
+      group relative bg-white rounded-[32px]
+      border border-gray-100 overflow-hidden
+      shadow-sm hover:shadow-2xl hover:-translate-y-1
+      transition-all duration-500
+    "
+  >
+    <div className="p-4 flex flex-col gap-4">
       {/* Badge source */}
       {outfit.source && (
         <div className="flex items-center justify-between -mb-1">
@@ -157,15 +169,32 @@ export default function OutfitCard({
         </div>
       )}
 
-      {/* Prendas del outfit */}
-      <div className="flex items-start justify-around gap-2">
-        <PrendaMini prenda={outfit._top}       label="Top"     />
-        <PrendaMini prenda={outfit._bottom}    label="Bottom"  />
-        <PrendaMini prenda={outfit._shoes}     label="Zapatos" />
-        {outfit._outerwear && (
-          <PrendaMini prenda={outfit._outerwear} label="Abrigo" />
-        )}
-      </div>
+{/* Visual layout tipo Pinterest */}
+<div className="relative overflow-hidden rounded-3xl">
+  
+  {/* Fondo aesthetic */}
+  <OutfitBackground outfit={outfit} />
+
+  {/* Contenido */}
+  <div className="relative z-10 p-4">
+    
+    <OutfitVisualLayout outfit={outfit} />
+
+    {/* Seasons */}
+    <div className="mt-4">
+      <OutfitSeasonBadges outfit={outfit} />    </div>
+
+    {/* Why this works */}
+    <div className="mt-4">
+      <OutfitWhyWorks outfit={outfit} />
+    </div>
+
+    {/* Breakdown */}
+    <div className="mt-4">
+      <OutfitScoreBreakdown outfit={outfit} />
+    </div>
+  </div>
+</div>
 
       {/* Score */}
       <ScoreBar score={outfit.score} />
@@ -297,5 +326,6 @@ export default function OutfitCard({
         </Button>
       )}
     </div>
+  </div>
   )
 }
