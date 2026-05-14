@@ -71,7 +71,14 @@ function PrendaMini({ prenda, label }) {
   )
 }
 
-export default function OutfitCard({ outfit, onSave, onDelete, onEdit, isSaved = false }) {
+export default function OutfitCard({
+  outfit,
+  onSave,
+  onDelete,
+  onEdit,
+  onAddToCollection,   // ← nuevo Fase 6
+  isSaved = false,
+}) {
   const [saving,   setSaving]   = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -89,6 +96,10 @@ export default function OutfitCard({ outfit, onSave, onDelete, onEdit, isSaved =
 
   const handleEdit = () => {
     if (onEdit) onEdit(outfit)
+  }
+
+  const handleAddToCollection = () => {
+    if (onAddToCollection) onAddToCollection(outfit)
   }
 
   return (
@@ -158,6 +169,22 @@ export default function OutfitCard({ outfit, onSave, onDelete, onEdit, isSaved =
 {/* Acciones */}
       {isSaved ? (
         <div className="flex gap-2">
+{/* Colecciones */}
+          {onAddToCollection && (
+            <button
+              onClick={handleAddToCollection}
+              className="flex items-center justify-center p-2 rounded-xl border border-gray-200
+                         bg-white text-gray-400 hover:text-purple-600 hover:border-purple-200
+                         hover:bg-purple-50 transition-colors duration-150 flex-shrink-0"
+              title="Añadir a colección"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+              </svg>
+            </button>
+          )}
+
           {/* Editar */}
           {onEdit && (
             <button

@@ -7,6 +7,8 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import { useGarments } from '@/hooks/useGarments'
 import { useOutfits } from '@/hooks/useOutfits'
+import { useCollections } from '@/hooks/useCollections'
+import AddToCollectionModal from '@/components/collections/AddToCollectionModal'
 import Navbar from '@/components/ui/Navbar'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
@@ -44,10 +46,19 @@ export default function OutfitsPage() {
   const [editingOutfit,     setEditingOutfit]     = useState(null)   // outfit en edición o null
 
   // ── UI state ───────────────────────────────────────────────
-  const [tab,          setTab]          = useState('sugeridos')
-  const [sourceFilter, setSourceFilter] = useState('all')
-  const [syncing,      setSyncing]      = useState(false)
-  const [toast,        setToast]        = useState({ visible: false, msg: '', type: 'success' })
+const {
+    collections,
+    createCollection,
+    addOutfitToCollection,
+    removeOutfitFromCollection,
+    getOutfitCollectionIds,
+  } = useCollections()
+
+  const [tab,               setTab]               = useState('sugeridos')
+  const [sourceFilter,      setSourceFilter]       = useState('all')
+  const [syncing,           setSyncing]            = useState(false)
+  const [collectionOutfit,  setCollectionOutfit]   = useState(null) // outfit para el modal de colecciones
+  const [toast,             setToast]              = useState({ visible: false, msg: '', type: 'success' })
 
   if (!authLoading && !user) {
     router.push('/login')
@@ -251,6 +262,7 @@ export default function OutfitsPage() {
             loading={loading}
             onSave={handleSaveSuggested}
             onDelete={() => {}}
+            onAddToCollection={(outfit) => outfit.id && setCollectionOutfit(outfit)}
             savedIds={outfitsGuardados.map((o) => o.id)}
             emptyMessage="No hay sugerencias todavía"
             emptySubMessage="Añade tops, bottoms y zapatos en Mi Armario para empezar."
@@ -298,7 +310,8 @@ export default function OutfitsPage() {
               loading={loading}
               onSave={() => {}}
               onDelete={handleDeleteOutfit}
-              onEdit={handleOpenEdit}                        // ← pasa onEdit
+              onEdit={handleOpenEdit}
+              onAddToCollection={(outfit) => setCollectionOutfit(outfit)}
               savedIds={guardadosFiltrados.map((o) => o.id)}
               emptyMessage={
                 sourceFilter === 'manual'    ? 'No tienes outfits manuales' :
@@ -314,6 +327,29 @@ export default function OutfitsPage() {
           </div>
         )}
       </main>
+
+      {/* ── MODAL: Añadir a colección ───────────────────────── */}
+      <Modal
+        isOpen={!!collectionOutfit}
+        onClose={() => setCollectionOutfit(null)}
+        title="Añadir a colección"
+        size="sm"
+      >
+        {collectionOutfit && (
+          <AddToCollectionModal
+            outfit={collectionOutfit}
+            collections={collections}
+            getOutfitCollectionIds={getOutfitCollectionIds}
+            addOutfitToCollection={addOutfitToCollection}
+            removeOutfitFromCollection={removeOutfitFromCollection}
+            createCollection={createCollection}
+            onClose={() => {
+              setCollectionOutfit(null)
+              showToast('Colecciones actualizadas 📁')
+            }}
+          />
+        )}
+      </Modal>
 
       {/* ── MODAL: Crear outfit manual ──────────────────────── */}
       <Modal

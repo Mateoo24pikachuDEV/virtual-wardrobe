@@ -8,7 +8,8 @@ export default function OutfitGrid({
   loading,
   onSave,
   onDelete,
-  onEdit,                // ← nuevo Fase 5
+  onEdit,
+  onAddToCollection,   // ← nuevo Fase 6
   savedIds = [],
   emptyMessage,
   emptySubMessage,
@@ -59,6 +60,7 @@ export default function OutfitGrid({
           onSave={onSave}
           onDelete={onDelete}
           onEdit={onEdit}
+          onAddToCollection={onAddToCollection}
           isSaved={savedIds.includes(outfit.id)}
         />
       ))}
