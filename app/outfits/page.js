@@ -13,16 +13,14 @@ import Button from '@/components/ui/Button'
 import OutfitGrid from '@/components/outfits/OutfitGrid'
 import ManualOutfitBuilder from '@/components/outfits/ManualOutfitBuilder'
 
-// ── Tabs disponibles ────────────────────────────────────────
 const TABS = [
-  { id: 'sugeridos',  label: '✨ Sugeridos'          },
-  { id: 'guardados',  label: '🔖 Guardados'           },
+  { id: 'sugeridos', label: '✨ Sugeridos' },
+  { id: 'guardados', label: '🔖 Guardados'  },
 ]
 
-// ── Filtros de source en Guardados ──────────────────────────
 const SOURCE_FILTERS = [
-  { id: 'all',       label: 'Todos'    },
-  { id: 'generated', label: '✨ Auto'  },
+  { id: 'all',       label: 'Todos'     },
+  { id: 'generated', label: '✨ Auto'   },
   { id: 'manual',    label: '✏️ Manual' },
 ]
 
@@ -36,28 +34,33 @@ export default function OutfitsPage() {
     loading,
     saveOutfit,
     createManualOutfit,
+    updateOutfit,
     deleteOutfit,
     syncTopOutfits,
   } = useOutfits(prendas)
 
-  const [tab,                setTab]                = useState('sugeridos')
-  const [sourceFilter,       setSourceFilter]       = useState('all')
-  const [syncing,            setSyncing]            = useState(false)
-  const [manualBuilderOpen,  setManualBuilderOpen]  = useState(false)
-  const [toast,              setToast]              = useState({ visible: false, msg: '' })
+  // ── Modales ────────────────────────────────────────────────
+  const [manualBuilderOpen, setManualBuilderOpen] = useState(false)
+  const [editingOutfit,     setEditingOutfit]     = useState(null)   // outfit en edición o null
+
+  // ── UI state ───────────────────────────────────────────────
+  const [tab,          setTab]          = useState('sugeridos')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [syncing,      setSyncing]      = useState(false)
+  const [toast,        setToast]        = useState({ visible: false, msg: '', type: 'success' })
 
   if (!authLoading && !user) {
     router.push('/login')
     return null
   }
 
-  // ── Helpers ─────────────────────────────────────────────────
-  const showToast = (msg) => {
-    setToast({ visible: true, msg })
+  // ── Toast helper ────────────────────────────────────────────
+  const showToast = (msg, type = 'success') => {
+    setToast({ visible: true, msg, type })
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 4000)
   }
 
-  // ── Filtrar guardados por source ─────────────────────────────
+  // ── Guardados filtrados por source ──────────────────────────
   const guardadosFiltrados = useMemo(() =>
     sourceFilter === 'all'
       ? outfitsGuardados
@@ -65,30 +68,69 @@ export default function OutfitsPage() {
     [outfitsGuardados, sourceFilter]
   )
 
-  // IDs guardados (para marcar botón "Guardar" en sugeridos)
+  // ── IDs guardados (para badge en sugeridos) ─────────────────
   const savedKeys = useMemo(() => new Set(
     outfitsGuardados.map(
       (o) => `${o.top_id}-${o.bottom_id}-${o.shoes_id}-${o.outerwear_id || 'none'}`
     )
   ), [outfitsGuardados])
 
-  // ── Handlers ────────────────────────────────────────────────
+  // ── Prendas mínimas para generar outfits ────────────────────
+  const puedeGenerar =
+    prendas.some((p) => p.categoria === 'top')    &&
+    prendas.some((p) => p.categoria === 'bottom') &&
+    prendas.some((p) => p.categoria === 'shoes')
 
+  // ── Contadores ─────────────────────────────────────────────
+  const countGuardados = outfitsGuardados.length
+  const countManuales  = outfitsGuardados.filter((o) => o.source === 'manual').length
+
+  // ── Handlers ───────────────────────────────────────────────
+
+  /** Guardar un outfit sugerido (automático) */
   const handleSaveSuggested = async (outfit) => {
     const { error } = await saveOutfit(outfit)
     if (!error) showToast('Outfit guardado 🔖')
+    else showToast(error, 'error')
   }
 
+  /** Crear outfit manual (desde builder en modo creación) */
   const handleCreateManual = async (outfitData) => {
     const { error } = await createManualOutfit(outfitData)
     if (error) return { error }
     showToast('Outfit manual guardado ✏️')
     setManualBuilderOpen(false)
-    setTab('guardados')       // ir a Guardados para verlo
-    setSourceFilter('manual') // enfocar en manuales
+    setTab('guardados')
+    setSourceFilter('manual')
     return { error: null }
   }
 
+  /** Abrir modal de edición con el outfit seleccionado */
+  const handleOpenEdit = (outfit) => {
+    setEditingOutfit(outfit)
+  }
+
+  /** Guardar cambios de edición */
+  const handleUpdateOutfit = async (outfitData) => {
+    if (!editingOutfit) return { error: 'No hay outfit seleccionado' }
+
+    const { error } = await updateOutfit(editingOutfit.id, outfitData)
+
+    if (error) return { error }
+
+    showToast(`Outfit actualizado ✏️ — nuevo score: ${outfitData.score}/100`)
+    setEditingOutfit(null)
+    return { error: null }
+  }
+
+  /** Eliminar outfit guardado */
+  const handleDeleteOutfit = async (outfitId) => {
+    const { error } = await deleteOutfit(outfitId)
+    if (!error) showToast('Outfit eliminado')
+    else showToast(error, 'error')
+  }
+
+  /** Sincronizar top 5 automáticos */
   const handleSync = async () => {
     setSyncing(true)
     await syncTopOutfits()
@@ -96,16 +138,7 @@ export default function OutfitsPage() {
     showToast('Top 5 outfits sincronizados ✓')
   }
 
-  // Necesidad mínima de prendas
-  const tieneTop    = prendas.some((p) => p.categoria === 'top')
-  const tieneBottom = prendas.some((p) => p.categoria === 'bottom')
-  const tieneShoes  = prendas.some((p) => p.categoria === 'shoes')
-  const puedeGenerar = tieneTop && tieneBottom && tieneShoes
-
-  // Contadores para badges de tab
-  const countGuardados = outfitsGuardados.length
-  const countManuales  = outfitsGuardados.filter((o) => o.source === 'manual').length
-
+  // ── Render ──────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -118,13 +151,12 @@ export default function OutfitsPage() {
             <h1 className="text-2xl font-bold text-gray-900">Outfits</h1>
             <p className="text-gray-500 mt-1 text-sm">
               {outfits.length > 0
-                ? `${outfits.length} combinaciones automáticas · ${countManuales} manuales`
+                ? `${outfits.length} automáticos · ${countManuales} manuales`
                 : 'Crea outfits automáticos o diseña los tuyos'}
             </p>
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {/* Botón principal: crear manual */}
             <Button
               size="md"
               onClick={() => setManualBuilderOpen(true)}
@@ -132,13 +164,11 @@ export default function OutfitsPage() {
               title={!puedeGenerar ? 'Necesitas al menos 1 top, 1 bottom y 1 zapato' : ''}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 4v16m8-8H4"/>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
               </svg>
               Crear outfit
             </Button>
 
-            {/* Sincronizar auto */}
             <Button
               variant="secondary"
               size="md"
@@ -158,16 +188,23 @@ export default function OutfitsPage() {
 
         {/* ── Toast ──────────────────────────────────────────── */}
         {toast.visible && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl text-sm
-                          text-green-700 flex items-center gap-2">
+          <div className={`
+            mb-6 p-4 rounded-xl text-sm flex items-center gap-2 border
+            ${toast.type === 'success'
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-red-50 border-red-200 text-red-700'}
+          `}>
             <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+              {toast.type === 'success'
+                ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+                : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+              }
             </svg>
             {toast.msg}
           </div>
         )}
 
-        {/* ── Aviso si faltan prendas ─────────────────────────── */}
+        {/* ── Aviso prendas insuficientes ────────────────────── */}
         {!puedeGenerar && (
           <div className="mb-6 p-5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
@@ -193,9 +230,7 @@ export default function OutfitsPage() {
               className={`
                 px-5 py-2 rounded-lg text-sm font-medium transition-all duration-150
                 flex items-center gap-1.5
-                ${tab === t.id
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'}
+                ${tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}
               `}
             >
               {t.label}
@@ -209,7 +244,7 @@ export default function OutfitsPage() {
           ))}
         </div>
 
-        {/* ── Contenido por tab ──────────────────────────────── */}
+        {/* ── Tab: Sugeridos ─────────────────────────────────── */}
         {tab === 'sugeridos' && (
           <OutfitGrid
             outfits={outfits}
@@ -222,10 +257,11 @@ export default function OutfitsPage() {
           />
         )}
 
+        {/* ── Tab: Guardados ─────────────────────────────────── */}
         {tab === 'guardados' && (
           <div className="flex flex-col gap-5">
 
-            {/* Filtros de source */}
+            {/* Filtro source */}
             {outfitsGuardados.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -244,13 +280,13 @@ export default function OutfitsPage() {
                       `}
                     >
                       {f.label}
-                      {f.id !== 'all' && (
-                        <span className="ml-1 opacity-70">
-                          ({outfitsGuardados.filter(
-                            (o) => f.id === 'all' || o.source === f.id
-                          ).length})
-                        </span>
-                      )}
+                      {' '}
+                      <span className="opacity-70">
+                        ({f.id === 'all'
+                          ? outfitsGuardados.length
+                          : outfitsGuardados.filter((o) => o.source === f.id).length
+                        })
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -261,14 +297,13 @@ export default function OutfitsPage() {
               outfits={guardadosFiltrados}
               loading={loading}
               onSave={() => {}}
-              onDelete={deleteOutfit}
+              onDelete={handleDeleteOutfit}
+              onEdit={handleOpenEdit}                        // ← pasa onEdit
               savedIds={guardadosFiltrados.map((o) => o.id)}
               emptyMessage={
-                sourceFilter === 'manual'
-                  ? 'No tienes outfits manuales'
-                  : sourceFilter === 'generated'
-                    ? 'No tienes outfits automáticos guardados'
-                    : 'No tienes outfits guardados'
+                sourceFilter === 'manual'    ? 'No tienes outfits manuales' :
+                sourceFilter === 'generated' ? 'No tienes outfits automáticos guardados' :
+                                               'No tienes outfits guardados'
               }
               emptySubMessage={
                 sourceFilter === 'manual'
@@ -286,13 +321,87 @@ export default function OutfitsPage() {
         onClose={() => setManualBuilderOpen(false)}
         title="Crear outfit manual"
         size="lg"
-        closeOnBackdrop={false}   // evitar cierres accidentales
+        closeOnBackdrop={false}
       >
         <ManualOutfitBuilder
           prendas={prendas}
           onSave={handleCreateManual}
           onCancel={() => setManualBuilderOpen(false)}
+          isEditing={false}
         />
+      </Modal>
+
+      {/* ── MODAL: Editar outfit guardado ───────────────────── */}
+      <Modal
+        isOpen={!!editingOutfit}
+        onClose={() => setEditingOutfit(null)}
+        title={editingOutfit
+          ? `Editando outfit · Score actual: ${editingOutfit.score}/100`
+          : 'Editar outfit'
+        }
+        size="lg"
+        closeOnBackdrop={false}
+      >
+        {/* Montamos el builder SOLO cuando editingOutfit existe para que
+            el useEffect de precarga se dispare correctamente */}
+        {editingOutfit && (
+          <div className="flex flex-col gap-0">
+
+            {/* Info rápida del outfit actual */}
+            <div className="flex items-center gap-3 p-3 mb-3 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex gap-1">
+                {[editingOutfit._top, editingOutfit._bottom, editingOutfit._shoes]
+                  .filter(Boolean)
+                  .map((p, i) => (
+                    <div key={i} className="w-9 h-9 rounded-lg overflow-hidden bg-gray-200 border border-gray-100 flex-shrink-0">
+                      {p.imagen_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover"/>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-sm">
+                          {p.categoria === 'top' ? '👕' : p.categoria === 'bottom' ? '👖' : '👟'}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                }
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-gray-500">Score actual</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full ${
+                        editingOutfit.score >= 80 ? 'bg-green-500' :
+                        editingOutfit.score >= 60 ? 'bg-yellow-500' : 'bg-orange-400'
+                      }`}
+                      style={{ width: `${editingOutfit.score}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700 flex-shrink-0">
+                    {editingOutfit.score}/100
+                  </span>
+                </div>
+              </div>
+              <span className={`
+                text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
+                ${editingOutfit.source === 'manual'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-500'}
+              `}>
+                {editingOutfit.source === 'manual' ? '✏️ Manual' : '✨ Auto'}
+              </span>
+            </div>
+
+            <ManualOutfitBuilder
+              prendas={prendas}
+              onSave={handleUpdateOutfit}
+              onCancel={() => setEditingOutfit(null)}
+              initialOutfit={editingOutfit}
+              isEditing={true}
+            />
+          </div>
+        )}
       </Modal>
     </div>
   )

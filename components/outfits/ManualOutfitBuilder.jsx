@@ -1,7 +1,7 @@
 // components/outfits/ManualOutfitBuilder.jsx
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import Image from 'next/image'
 import Button from '@/components/ui/Button'
 import {
@@ -313,17 +313,49 @@ function CategorySection({ section, prendas, selected, onSelect }) {
  * @prop {Function} onSave     - async (outfitData) => { error }
  * @prop {Function} onCancel
  */
-export default function ManualOutfitBuilder({ prendas, onSave, onCancel }) {
+/**
+ * @prop {Object[]}    prendas       - todas las prendas del usuario
+ * @prop {Function}    onSave        - async (outfitData) => { error }
+ * @prop {Function}    onCancel
+ * @prop {Object|null} initialOutfit - outfit a editar (null = crear nuevo)
+ * @prop {boolean}     isEditing     - true cuando estamos editando
+ */
+export default function ManualOutfitBuilder({
+  prendas,
+  onSave,
+  onCancel,
+  initialOutfit = null,
+  isEditing     = false,
+}) {
   // Estado de selección
   const [selected, setSelected] = useState({
-    top:        null,
-    bottom:     null,
-    shoes:      null,
-    outerwear:  null,
+    top:         null,
+    bottom:      null,
+    shoes:       null,
+    outerwear:   null,
     accessories: [],
   })
-  const [saving,   setSaving]   = useState(false)
+  const [saving,    setSaving]    = useState(false)
   const [saveError, setSaveError] = useState('')
+
+// Pre-cargar selección cuando se abre en modo edición
+  // Usa initialOutfit?.id como dependency para evitar re-renders innecesarios
+  useEffect(() => {
+    if (initialOutfit) {
+      setSelected({
+        top:         initialOutfit._top       || null,
+        bottom:      initialOutfit._bottom    || null,
+        shoes:       initialOutfit._shoes     || null,
+        outerwear:   initialOutfit._outerwear || null,
+        accessories: initialOutfit._accessories || [],
+      })
+    } else {
+      // Modo creación: resetear formulario
+      setSelected({ top: null, bottom: null, shoes: null, outerwear: null, accessories: [] })
+    }
+    setSaveError('')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOutfit?.id])
 
   // Prendas por categoría (memo para no recalcular)
   const prendasPorCategoria = useMemo(() => ({
@@ -391,28 +423,30 @@ export default function ManualOutfitBuilder({ prendas, onSave, onCancel }) {
     setSaveError('')
   }, [])
 
-  // Guardar outfit
+// Guardar / actualizar outfit
   const handleSave = async () => {
     if (!canSave) return
 
     setSaving(true)
     setSaveError('')
 
-    const { error } = await onSave({
-      top_id:       selected.top.id,
-      bottom_id:    selected.bottom.id,
-      shoes_id:     selected.shoes.id,
-      outerwear_id: selected.outerwear?.id || null,
-      score:        liveScore,
-      source:       'manual',
-      // Referencias para UI (no se guardan en BD directamente)
-      _top:         selected.top,
-      _bottom:      selected.bottom,
-      _shoes:       selected.shoes,
-      _outerwear:   selected.outerwear || null,
-      _accessories: selected.accessories,
+    const outfitData = {
+      top_id:        selected.top.id,
+      bottom_id:     selected.bottom.id,
+      shoes_id:      selected.shoes.id,
+      outerwear_id:  selected.outerwear?.id || null,
+      score:         liveScore,
+      // source: el padre decide si es 'manual' o mantiene el existente
+      source:        initialOutfit?.source || 'manual',
+      _top:          selected.top,
+      _bottom:       selected.bottom,
+      _shoes:        selected.shoes,
+      _outerwear:    selected.outerwear || null,
+      _accessories:  selected.accessories,
       accessory_ids: selected.accessories.map((a) => a.id),
-    })
+    }
+
+    const { error } = await onSave(outfitData)
 
     setSaving(false)
 
@@ -421,8 +455,10 @@ export default function ManualOutfitBuilder({ prendas, onSave, onCancel }) {
       return
     }
 
-    // Reset y cerrar
-    setSelected({ top: null, bottom: null, shoes: null, outerwear: null, accessories: [] })
+    // En creación: resetear. En edición: el padre cierra el modal.
+    if (!isEditing) {
+      setSelected({ top: null, bottom: null, shoes: null, outerwear: null, accessories: [] })
+    }
     onCancel()
   }
 
@@ -492,18 +528,25 @@ export default function ManualOutfitBuilder({ prendas, onSave, onCancel }) {
           onClick={handleSave}
           className="flex-1"
         >
-          {saving ? 'Guardando...' : (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
-              </svg>
-              Guardar outfit manual
-              {liveScore !== null && liveScore > 0 && (
-                <span className="ml-1 text-xs opacity-80">({liveScore}/100)</span>
-              )}
-            </>
-          )}
+{saving
+            ? (isEditing ? 'Actualizando...' : 'Guardando...')
+            : (
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d={isEditing
+                      ? 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
+                      : 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z'
+                    }
+                  />
+                </svg>
+                {isEditing ? 'Guardar cambios' : 'Guardar outfit manual'}
+                {liveScore !== null && liveScore > 0 && (
+                  <span className="ml-1 text-xs opacity-80">({liveScore}/100)</span>
+                )}
+              </>
+            )
+          }
         </Button>
       </div>
     </div>
