@@ -1,126 +1,275 @@
-// components/collections/CollectionForm.jsx
+// hooks/useCollections.js
 'use client'
 
-import { useState, useEffect } from 'react'
-import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
+import { useState, useEffect, useCallback } from 'react'
+import supabase from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 
-/**
- * Formulario de crear / editar colección.
- * @prop {Object|null} initialData  - { nombre, descripcion } para edición
- * @prop {Function}    onSubmit     - async ({ nombre, descripcion }) => { error }
- * @prop {Function}    onCancel
- * @prop {boolean}     isEditing
- * @prop {boolean}     compact      - versión inline sin card (para AddToCollectionModal)
- */
-export default function CollectionForm({
-  initialData = null,
-  onSubmit,
-  onCancel,
-  isEditing = false,
-  compact   = false,
-}) {
-  const [form,    setForm]    = useState({ nombre: '', descripcion: '' })
-  const [errors,  setErrors]  = useState({})
-  const [loading, setLoading] = useState(false)
-  const [apiError, setApiError] = useState('')
+// Campos de prenda para joins de cover
+const COVER_FIELDS = 'id, imagen_url'
 
-  useEffect(() => {
-    if (initialData) {
-      setForm({
-        nombre:      initialData.nombre      || '',
-        descripcion: initialData.descripcion || '',
-      })
-    }
-  }, [initialData?.nombre])
+export function useCollections() {
+  const { user } = useAuth()
+  const [collections, setCollections] = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
 
-  const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
-    setErrors((prev) => ({ ...prev, [e.target.name]: '' }))
-    setApiError('')
-  }
-
-  const validate = () => {
-    const e = {}
-    if (!form.nombre.trim()) e.nombre = 'El nombre es obligatorio'
-    if (form.nombre.trim().length > 60) e.nombre = 'Máximo 60 caracteres'
-    return e
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    const newErrors = validate()
-    if (Object.keys(newErrors).length) { setErrors(newErrors); return }
+  // -----------------------------------------------------------
+  // FETCH todas las colecciones del usuario
+  // Incluye: count de outfits + thumbnails (primeras 4 imágenes)
+  // -----------------------------------------------------------
+  const fetchCollections = useCallback(async () => {
+    if (!user) { setCollections([]); setLoading(false); return }
 
     setLoading(true)
-    const { error } = await onSubmit({
-      nombre:      form.nombre.trim(),
-      descripcion: form.descripcion.trim(),
-    })
+    setError(null)
+
+    const { data, error: fetchError } = await supabase
+      .from('collections')
+      .select(`
+        id, nombre, descripcion, created_at, updated_at, cover_outfit_id,
+        outfit_collections (
+          added_at,
+          outfit:outfit_id (
+            id,
+            top:top_id ( ${COVER_FIELDS} )
+          )
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (fetchError) {
+      setError(fetchError.message)
+    } else {
+      setCollections((data || []).map(normalizarCollection))
+    }
+
     setLoading(false)
+  }, [user])
 
-    if (error) { setApiError(error); return }
+  useEffect(() => { fetchCollections() }, [fetchCollections])
 
-    if (!isEditing) setForm({ nombre: '', descripcion: '' })
+  // -----------------------------------------------------------
+  // Normalizar fila de BD → estructura UI
+  // -----------------------------------------------------------
+  function normalizarCollection(c) {
+    const outfitsOrdenados = [...(c.outfit_collections || [])]
+      .sort((a, b) => new Date(b.added_at) - new Date(a.added_at))
+
+    const thumbnails = outfitsOrdenados
+      .slice(0, 4)
+      .map((oc) => oc.outfit?.top?.imagen_url || null)
+
+    return {
+      ...c,
+      outfit_count: c.outfit_collections?.length ?? 0,
+      thumbnails,                          // hasta 4 URLs para la portada
+      outfit_ids: outfitsOrdenados.map((oc) => oc.outfit?.id).filter(Boolean),
+    }
   }
 
-  return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {apiError && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-          {apiError}
-        </div>
-      )}
+  // -----------------------------------------------------------
+  // CREATE colección
+  // -----------------------------------------------------------
+  const createCollection = useCallback(async ({ nombre, descripcion = '' }) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
 
-      <Input
-        label={compact ? undefined : 'Nombre de la colección'}
-        name="nombre"
-        placeholder='Ej: "Invierno 2026", "Citas", "Minimal fits"...'
-        value={form.nombre}
-        onChange={handleChange}
-        error={errors.nombre}
-        required
-        autoFocus
-        maxLength={60}
-      />
+    const { data, error: insertError } = await supabase
+      .from('collections')
+      .insert([{
+        user_id:     user.id,
+        nombre:      nombre.trim(),
+        descripcion: descripcion.trim() || null,
+      }])
+      .select()
+      .single()
 
-      {!compact && (
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-gray-700">
-            Descripción <span className="text-gray-400 font-normal">(opcional)</span>
-          </label>
-          <textarea
-            name="descripcion"
-            placeholder="Describe esta colección..."
-            value={form.descripcion}
-            onChange={handleChange}
-            rows={3}
-            maxLength={200}
-            className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm
-                       placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500
-                       focus:border-transparent resize-none transition-all"
-          />
-          {form.descripcion.length > 0 && (
-            <p className="text-xs text-gray-400 text-right">
-              {form.descripcion.length}/200
-            </p>
-          )}
-        </div>
-      )}
+    if (insertError) return { error: insertError.message }
 
-      <div className={`flex gap-2 ${compact ? '' : 'pt-1'}`}>
-        {onCancel && (
-          <Button type="button" variant="secondary" size={compact ? 'sm' : 'md'} onClick={onCancel} className="flex-1">
-            Cancelar
-          </Button>
-        )}
-        <Button type="submit" size={compact ? 'sm' : 'md'} loading={loading} className="flex-1">
-          {loading
-            ? (isEditing ? 'Guardando...' : 'Creando...')
-            : (isEditing ? 'Guardar cambios' : '+ Crear colección')
-          }
-        </Button>
-      </div>
-    </form>
-  )
+    const nueva = normalizarCollection({ ...data, outfit_collections: [] })
+    setCollections((prev) => [nueva, ...prev])
+    return { data: nueva, error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // UPDATE colección (nombre / descripción)
+  // -----------------------------------------------------------
+  const updateCollection = useCallback(async (collectionId, { nombre, descripcion = '' }) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
+
+    const { data, error: updateError } = await supabase
+      .from('collections')
+      .update({
+        nombre:      nombre.trim(),
+        descripcion: descripcion.trim() || null,
+        updated_at:  new Date().toISOString(),
+      })
+      .eq('id', collectionId)
+      .eq('user_id', user.id)
+      .select()
+      .single()
+
+    if (updateError) return { error: updateError.message }
+
+    setCollections((prev) =>
+      prev.map((c) => c.id === collectionId ? { ...c, ...data } : c)
+    )
+    return { data, error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // DELETE colección (outfit_collections en cascada por FK)
+  // -----------------------------------------------------------
+  const deleteCollection = useCallback(async (collectionId) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
+
+    const { error: deleteError } = await supabase
+      .from('collections')
+      .delete()
+      .eq('id', collectionId)
+      .eq('user_id', user.id)
+
+    if (deleteError) return { error: deleteError.message }
+
+    setCollections((prev) => prev.filter((c) => c.id !== collectionId))
+    return { error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // ADD outfit → colección
+  // -----------------------------------------------------------
+  const addOutfitToCollection = useCallback(async (outfitId, collectionId) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
+
+    const { error: insertError } = await supabase
+      .from('outfit_collections')
+      .insert([{ outfit_id: outfitId, collection_id: collectionId }])
+
+    if (insertError) {
+      // Duplicate (outfit ya estaba) → éxito silencioso
+      if (insertError.code === '23505') return { error: null }
+      return { error: insertError.message }
+    }
+
+    // Actualizar count local
+    setCollections((prev) =>
+      prev.map((c) =>
+        c.id === collectionId
+          ? {
+              ...c,
+              outfit_count: c.outfit_count + 1,
+              outfit_ids:   [...c.outfit_ids, outfitId],
+            }
+          : c
+      )
+    )
+    return { error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // REMOVE outfit ← colección
+  // -----------------------------------------------------------
+  const removeOutfitFromCollection = useCallback(async (outfitId, collectionId) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
+
+    const { error: deleteError } = await supabase
+      .from('outfit_collections')
+      .delete()
+      .eq('outfit_id',     outfitId)
+      .eq('collection_id', collectionId)
+
+    if (deleteError) return { error: deleteError.message }
+
+    setCollections((prev) =>
+      prev.map((c) =>
+        c.id === collectionId
+          ? {
+              ...c,
+              outfit_count: Math.max(0, c.outfit_count - 1),
+              outfit_ids:   c.outfit_ids.filter((id) => id !== outfitId),
+            }
+          : c
+      )
+    )
+    return { error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // GET colecciones que contienen un outfit concreto
+  // (para saber qué checkboxes pre-marcar en AddToCollectionModal)
+  // -----------------------------------------------------------
+  const getOutfitCollectionIds = useCallback(async (outfitId) => {
+    if (!user) return { data: [], error: null }
+
+    const { data, error: fetchError } = await supabase
+      .from('outfit_collections')
+      .select('collection_id')
+      .eq('outfit_id', outfitId)
+
+    if (fetchError) return { data: [], error: fetchError.message }
+    return { data: (data || []).map((r) => r.collection_id), error: null }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // FETCH outfits de una colección concreta (para página de detalle)
+  // -----------------------------------------------------------
+  const fetchCollectionOutfits = useCallback(async (collectionId) => {
+    const PRENDA_FIELDS = 'id, nombre, categoria, subcategoria, color, color_familia, formalidad, formalidades, imagen_url, warmth'
+
+    const { data, error: fetchError } = await supabase
+      .from('outfit_collections')
+      .select(`
+        added_at,
+        outfit:outfit_id (
+          *,
+          top:top_id           ( ${PRENDA_FIELDS} ),
+          bottom:bottom_id     ( ${PRENDA_FIELDS} ),
+          shoes:shoes_id       ( ${PRENDA_FIELDS} ),
+          outerwear:outerwear_id( ${PRENDA_FIELDS} ),
+          outfit_accessories (
+            prenda:prenda_id   ( ${PRENDA_FIELDS} )
+          )
+        )
+      `)
+      .eq('collection_id', collectionId)
+      .order('added_at', { ascending: false })
+
+    if (fetchError) return { data: [], error: fetchError.message }
+
+    // Normalizar igual que useOutfits
+    const outfits = (data || [])
+      .map((row) => {
+        const o = row.outfit
+        if (!o) return null
+        const accessories = (o.outfit_accessories || []).map((oa) => oa.prenda).filter(Boolean)
+        return {
+          ...o,
+          _top:         o.top,
+          _bottom:      o.bottom,
+          _shoes:       o.shoes,
+          _outerwear:   o.outerwear || null,
+          _accessories: accessories,
+          accessory_ids: accessories.map((a) => a.id),
+          added_at:     row.added_at,
+        }
+      })
+      .filter(Boolean)
+
+    return { data: outfits, error: null }
+  }, [])
+
+  return {
+    collections,
+    loading,
+    error,
+    createCollection,
+    updateCollection,
+    deleteCollection,
+    addOutfitToCollection,
+    removeOutfitFromCollection,
+    getOutfitCollectionIds,
+    fetchCollectionOutfits,
+    refetch: fetchCollections,
+  }
 }
