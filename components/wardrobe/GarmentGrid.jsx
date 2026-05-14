@@ -23,6 +23,7 @@ export default function GarmentGrid({
   prendas,
   loading,
   onDelete,
+  onEdit,               // ← nuevo
   filtroCategoria,
   setFiltroCategoria,
   filtroFormalidad,
@@ -130,15 +131,14 @@ export default function GarmentGrid({
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {prendasFiltradas
-            .filter(Boolean)
-            .map((prenda) => (
+      {prendasFiltradas.map((prenda) => (
             <GarmentCard
-            key={prenda.id}
-            prenda={prenda}
-            onDelete={onDelete}
-    />
-))}
+              key={prenda.id}
+              prenda={prenda}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
+          ))}
         </div>
       )}
     </div>
