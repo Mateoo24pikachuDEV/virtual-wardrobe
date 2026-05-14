@@ -4,8 +4,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import supabase from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import {
+  PRENDA_FIELDS,
+  OUTFIT_SELECT_FRAGMENT,
+  normalizarOutfit,
+} from '@/lib/outfitAdapter'
 
-// Campos de prenda para joins de cover
+// Para la portada solo necesitamos imagen_url
 const COVER_FIELDS = 'id, imagen_url'
 
 export function useCollections() {
@@ -211,25 +216,18 @@ export function useCollections() {
     return { data: (data || []).map((r) => r.collection_id), error: null }
   }, [user])
 
-  // -----------------------------------------------------------
+// -----------------------------------------------------------
   // FETCH outfits de una colección concreta (para página de detalle)
+  // Usa OUTFIT_SELECT_FRAGMENT del adapter → soporta outfit_items + fallback
   // -----------------------------------------------------------
   const fetchCollectionOutfits = useCallback(async (collectionId) => {
-    const PRENDA_FIELDS = 'id, nombre, categoria, subcategoria, color, color_familia, formalidad, formalidades, imagen_url, warmth'
-
     const { data, error: fetchError } = await supabase
       .from('outfit_collections')
       .select(`
         added_at,
         outfit:outfit_id (
           *,
-          top:top_id           ( ${PRENDA_FIELDS} ),
-          bottom:bottom_id     ( ${PRENDA_FIELDS} ),
-          shoes:shoes_id       ( ${PRENDA_FIELDS} ),
-          outerwear:outerwear_id( ${PRENDA_FIELDS} ),
-          outfit_accessories (
-            prenda:prenda_id   ( ${PRENDA_FIELDS} )
-          )
+          ${OUTFIT_SELECT_FRAGMENT}
         )
       `)
       .eq('collection_id', collectionId)
@@ -237,21 +235,12 @@ export function useCollections() {
 
     if (fetchError) return { data: [], error: fetchError.message }
 
-    // Normalizar igual que useOutfits
     const outfits = (data || [])
       .map((row) => {
-        const o = row.outfit
-        if (!o) return null
-        const accessories = (o.outfit_accessories || []).map((oa) => oa.prenda).filter(Boolean)
+        if (!row.outfit) return null
         return {
-          ...o,
-          _top:         o.top,
-          _bottom:      o.bottom,
-          _shoes:       o.shoes,
-          _outerwear:   o.outerwear || null,
-          _accessories: accessories,
-          accessory_ids: accessories.map((a) => a.id),
-          added_at:     row.added_at,
+          ...normalizarOutfit(row.outfit),  // ← usa el adapter centralizado
+          added_at: row.added_at,
         }
       })
       .filter(Boolean)

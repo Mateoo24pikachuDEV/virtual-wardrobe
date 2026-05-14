@@ -4,14 +4,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import supabase from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import {generarOutfits, calcularDatosTermicos } from '@/lib/outfitEngine'
-
-// Campos que seleccionamos de cada prenda en los joins
-const PRENDA_FIELDS = [
-  'id', 'nombre', 'categoria', 'subcategoria',
-  'color', 'color_familia', 'formalidad', 'formalidades',
-  'imagen_url', 'warmth',
-].join(', ')
+import { generarOutfits, calcularDatosTermicos } from '@/lib/outfitEngine'
+import {
+  PRENDA_FIELDS,
+  OUTFIT_SELECT_FRAGMENT,
+  normalizarOutfit,
+  buildOutfitItems,
+  esMigrado,
+} from '@/lib/outfitAdapter'
 
 export function useOutfits(prendas = []) {
   const { user } = useAuth()
@@ -26,33 +26,12 @@ export function useOutfits(prendas = []) {
   // -----------------------------------------------------------
   useEffect(() => {
     if (!prendas || prendas.length === 0) { setOutfits([]); return }
-    const sugerencias = generarOutfits(prendas)
-    setOutfits(sugerencias)
+    setOutfits(generarOutfits(prendas))
   }, [prendas])
 
   // -----------------------------------------------------------
-  // Normalizar fila de BD → estructura que usa la UI
-  // Convierte los joins de Supabase a _top, _bottom, etc.
-  // -----------------------------------------------------------
-  const normalizarOutfit = useCallback((row) => {
-    // outfit_accessories viene como [{ prenda: {...} }, ...]
-    const accessories = (row.outfit_accessories || [])
-      .map((oa) => oa.prenda)
-      .filter(Boolean)
-
-    return {
-      ...row,
-      _top:         row.top,
-      _bottom:      row.bottom,
-      _shoes:       row.shoes,
-      _outerwear:   row.outerwear    || null,
-      _accessories: accessories,
-      accessory_ids: accessories.map((a) => a.id),
-    }
-  }, [])
-
-  // -----------------------------------------------------------
   // FETCH outfits guardados
+  // Usa OUTFIT_SELECT_FRAGMENT que incluye outfit_items + fallbacks
   // -----------------------------------------------------------
   const fetchOutfitsGuardados = useCallback(async () => {
     if (!user) return
@@ -62,16 +41,7 @@ export function useOutfits(prendas = []) {
 
     const { data, error: fetchError } = await supabase
       .from('outfits')
-      .select(`
-        *,
-        top:top_id              ( ${PRENDA_FIELDS} ),
-        bottom:bottom_id        ( ${PRENDA_FIELDS} ),
-        shoes:shoes_id          ( ${PRENDA_FIELDS} ),
-        outerwear:outerwear_id  ( ${PRENDA_FIELDS} ),
-        outfit_accessories (
-          prenda:prenda_id      ( ${PRENDA_FIELDS} )
-        )
-      `)
+      .select(`*, ${OUTFIT_SELECT_FRAGMENT}`)
       .eq('user_id', user.id)
       .order('score', { ascending: false })
 
@@ -82,34 +52,32 @@ export function useOutfits(prendas = []) {
     }
 
     setLoading(false)
-  }, [user, normalizarOutfit])
+  }, [user])
 
   useEffect(() => { fetchOutfitsGuardados() }, [fetchOutfitsGuardados])
 
   // -----------------------------------------------------------
-  // SAVE outfit (generado o manual)
+  // SAVE outfit
+  // Dual-write: inserta en `outfits` (compat) + `outfit_items` (nuevo)
+  // Ya NO escribe en outfit_accessories (deprecado desde Fase 8)
   // -----------------------------------------------------------
-  /**
-   * @param {Object} outfit  - objeto con _top, _bottom, _shoes, etc.
-   */
   const saveOutfit = useCallback(async (outfit) => {
     if (!user) return { error: 'No hay usuario autenticado' }
 
     try {
-// 1. Calcular datos térmicos a partir de las referencias de prenda
-      //    (siempre frescos, nunca stale)
+      // ── 1. Calcular datos térmicos ───────────────────────
       const { nivel_termico, seasons } = outfit._top
         ? calcularDatosTermicos(
             outfit._top,
             outfit._bottom,
             outfit._shoes,
-            outfit._outerwear    || null,
-            outfit._accessories  || []
+            outfit._outerwear   || null,
+            outfit._accessories || []
           )
         : { nivel_termico: null, seasons: [] }
 
-      // 2. Insertar fila en outfits
-      const { data: outfitData, error: insertError } = await supabase
+      // ── 2. INSERT en outfits (columnas antiguas por compat) ──
+      const { data: outfitRecord, error: insertError } = await supabase
         .from('outfits')
         .insert([{
           user_id:       user.id,
@@ -127,32 +95,39 @@ export function useOutfits(prendas = []) {
 
       if (insertError) throw new Error(insertError.message)
 
-      // 2. Insertar accesorios en outfit_accessories (si los hay)
-      const accIds = outfit.accessory_ids || []
-      if (accIds.length > 0) {
-        const rows = accIds.map((prendaId) => ({
-          outfit_id: outfitData.id,
-          prenda_id: prendaId,
-        }))
+      // ── 3. INSERT en outfit_items (nuevo formato) ────────
+      const items = buildOutfitItems(outfitRecord.id, {
+        top:         outfit._top,
+        bottom:      outfit._bottom,
+        shoes:       outfit._shoes,
+        outerwear:   outfit._outerwear    || null,
+        accessories: outfit._accessories || [],
+      })
 
-        const { error: accError } = await supabase
-          .from('outfit_accessories')
-          .insert(rows)
+      if (items.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('outfit_items')
+          .insert(items)
 
-        if (accError) {
-          // No bloqueamos: el outfit quedó guardado, solo faltan accesorios
-          console.warn('Error guardando accesorios:', accError.message)
+        if (itemsError) {
+          console.warn('outfit_items insert warning:', itemsError.message)
+          // No lanzamos: el outfit se guardó, solo falta la nueva tabla
         }
       }
 
-      // 3. Construir objeto completo para actualizar el estado
+      // ── 4. Actualizar estado local ───────────────────────
       const outfitCompleto = normalizarOutfit({
-        ...outfitData,
-        top:               outfit._top,
-        bottom:            outfit._bottom,
-        shoes:             outfit._shoes,
-        outerwear:         outfit._outerwear || null,
-        outfit_accessories: (outfit._accessories || []).map((a) => ({ prenda: a })),
+        ...outfitRecord,
+        nivel_termico,
+        seasons,
+        outfit_items: items.map((item) => ({
+          ...item,
+          prenda: item.slot === 'top'       ? outfit._top
+                : item.slot === 'bottom'    ? outfit._bottom
+                : item.slot === 'shoes'     ? outfit._shoes
+                : item.slot === 'outerwear' ? outfit._outerwear
+                : (outfit._accessories || []).find((a) => a.id === item.prenda_id) || null,
+        })),
       })
 
       setOutfitsGuardados((prev) => [outfitCompleto, ...prev])
@@ -162,93 +137,24 @@ export function useOutfits(prendas = []) {
       setError(err.message)
       return { data: null, error: err.message }
     }
-  }, [user, normalizarOutfit])
-
-  // -----------------------------------------------------------
-  // UPDATE accesorios de un outfit guardado
-  // -----------------------------------------------------------
-  /**
-   * @param {string}   outfitId
-   * @param {string[]} newAccessoryIds  - array completo de IDs (reemplaza el anterior)
-   * @param {Object[]} newAccessoryObjs - objetos completos para actualizar la UI
-   * @param {number}   newScore
-   */
-  const updateOutfitAccessories = useCallback(async (
-    outfitId,
-    newAccessoryIds,
-    newAccessoryObjs,
-    newScore
-  ) => {
-    if (!user) return { error: 'No hay usuario autenticado' }
-
-    try {
-      // 1. Borrar accesorios actuales del outfit
-      const { error: deleteAccError } = await supabase
-        .from('outfit_accessories')
-        .delete()
-        .eq('outfit_id', outfitId)
-
-      if (deleteAccError) throw new Error(deleteAccError.message)
-
-      // 2. Insertar los nuevos
-      if (newAccessoryIds.length > 0) {
-        const rows = newAccessoryIds.map((prendaId) => ({
-          outfit_id: outfitId,
-          prenda_id: prendaId,
-        }))
-        const { error: insertAccError } = await supabase
-          .from('outfit_accessories')
-          .insert(rows)
-
-        if (insertAccError) throw new Error(insertAccError.message)
-      }
-
-      // 3. Actualizar score en outfits
-      const { error: updateError } = await supabase
-        .from('outfits')
-        .update({ score: newScore })
-        .eq('id', outfitId)
-        .eq('user_id', user.id)
-
-      if (updateError) throw new Error(updateError.message)
-
-      // 4. Actualizar estado local
-      setOutfitsGuardados((prev) =>
-        prev.map((o) =>
-          o.id === outfitId
-            ? {
-                ...o,
-                score:        newScore,
-                _accessories: newAccessoryObjs,
-                accessory_ids: newAccessoryIds,
-                outfit_accessories: newAccessoryObjs.map((a) => ({ prenda: a })),
-              }
-            : o
-        )
-      )
-
-      return { error: null }
-    } catch (err) {
-      setError(err.message)
-      return { error: err.message }
-    }
   }, [user])
 
-// -----------------------------------------------------------
-  // UPDATE outfit completo (prendas + accesorios + score)
   // -----------------------------------------------------------
-  /**
-   * Reemplaza todas las prendas y accesorios de un outfit existente
-   * y recalcula su score en la BD.
-   *
-   * @param {string} outfitId
-   * @param {Object} outfitData  - misma estructura que saveOutfit
-   */
+  // CREATE MANUAL OUTFIT
+  // -----------------------------------------------------------
+  const createManualOutfit = useCallback(async (outfit) => {
+    return saveOutfit({ ...outfit, source: 'manual' })
+  }, [saveOutfit])
+
+  // -----------------------------------------------------------
+  // UPDATE outfit completo (prendas + accesorios + score)
+  // Reemplaza outfit_items por completo (delete + insert)
+  // -----------------------------------------------------------
   const updateOutfit = useCallback(async (outfitId, outfitData) => {
     if (!user) return { error: 'No hay usuario autenticado' }
 
     try {
-// ── 0. Recalcular datos térmicos con las nuevas prendas ──
+      // ── 0. Recalcular datos térmicos ─────────────────────
       const { nivel_termico, seasons } = outfitData._top
         ? calcularDatosTermicos(
             outfitData._top,
@@ -259,7 +165,7 @@ export function useOutfits(prendas = []) {
           )
         : { nivel_termico: null, seasons: [] }
 
-      // ── 1. Actualizar prenda principal ───────────────────
+      // ── 1. Actualizar fila principal ─────────────────────
       const { data: outfitRecord, error: updateError } = await supabase
         .from('outfits')
         .update({
@@ -278,34 +184,56 @@ export function useOutfits(prendas = []) {
 
       if (updateError) throw new Error(updateError.message)
 
-      // ── 2. Reemplazar accesorios (delete + insert) ───────
-      const { error: deleteAccError } = await supabase
-        .from('outfit_accessories')
+      // ── 2. Reemplazar outfit_items ───────────────────────
+      const { error: deleteItemsError } = await supabase
+        .from('outfit_items')
         .delete()
         .eq('outfit_id', outfitId)
 
-      if (deleteAccError) throw new Error(deleteAccError.message)
+      if (deleteItemsError) throw new Error(deleteItemsError.message)
 
-      const accIds = outfitData.accessory_ids || []
-      if (accIds.length > 0) {
-        const rows = accIds.map((prendaId) => ({
-          outfit_id: outfitId,
-          prenda_id: prendaId,
-        }))
-        const { error: insertAccError } = await supabase
-          .from('outfit_accessories')
-          .insert(rows)
-        if (insertAccError) throw new Error(insertAccError.message)
+      const newItems = buildOutfitItems(outfitId, {
+        top:         outfitData._top,
+        bottom:      outfitData._bottom,
+        shoes:       outfitData._shoes,
+        outerwear:   outfitData._outerwear    || null,
+        accessories: outfitData._accessories  || [],
+      })
+
+      if (newItems.length > 0) {
+        const { error: insertItemsError } = await supabase
+          .from('outfit_items')
+          .insert(newItems)
+        if (insertItemsError) throw new Error(insertItemsError.message)
       }
 
-      // ── 3. Reconstruir objeto para el estado local ───────
+      // ── 3. (Compat) Reemplazar outfit_accessories ────────
+      // Se mantiene para evitar datos huérfanos mientras existan
+      // lectores que aún usen el formato antiguo.
+      await supabase.from('outfit_accessories').delete().eq('outfit_id', outfitId)
+
+      const accIds = (outfitData._accessories || []).map((a) => a.id)
+      if (accIds.length > 0) {
+        await supabase.from('outfit_accessories').insert(
+          accIds.map((pid) => ({ outfit_id: outfitId, prenda_id: pid }))
+        )
+      }
+
+      // ── 4. Actualizar estado local ───────────────────────
       const outfitActualizado = normalizarOutfit({
         ...outfitRecord,
-        top:              outfitData._top,
-        bottom:           outfitData._bottom,
-        shoes:            outfitData._shoes,
-        outerwear:        outfitData._outerwear || null,
-        outfit_accessories: (outfitData._accessories || []).map((a) => ({ prenda: a })),
+        nivel_termico,
+        seasons,
+        outfit_items: newItems.map((item) => {
+          const findPrenda = () => {
+            if (item.slot === 'top')       return outfitData._top
+            if (item.slot === 'bottom')    return outfitData._bottom
+            if (item.slot === 'shoes')     return outfitData._shoes
+            if (item.slot === 'outerwear') return outfitData._outerwear
+            return (outfitData._accessories || []).find((a) => a.id === item.prenda_id)
+          }
+          return { ...item, prenda: findPrenda() }
+        }),
       })
 
       setOutfitsGuardados((prev) =>
@@ -318,15 +246,83 @@ export function useOutfits(prendas = []) {
       setError(err.message)
       return { data: null, error: err.message }
     }
-  }, [user, normalizarOutfit])
+  }, [user])
 
   // -----------------------------------------------------------
-  // DELETE outfit
+  // UPDATE solo accesorios de un outfit guardado
+  // (mantenido por compatibilidad con Fase 2 — usa outfit_items)
+  // -----------------------------------------------------------
+  const updateOutfitAccessories = useCallback(async (
+    outfitId,
+    newAccessoryIds,
+    newAccessoryObjs,
+    newScore
+  ) => {
+    if (!user) return { error: 'No hay usuario autenticado' }
+
+    try {
+      // Borrar accesorios actuales en outfit_items
+      const { error: deleteError } = await supabase
+        .from('outfit_items')
+        .delete()
+        .eq('outfit_id', outfitId)
+        .eq('slot', 'accessory')
+
+      if (deleteError) throw new Error(deleteError.message)
+
+      // Insertar nuevos
+      if (newAccessoryIds.length > 0) {
+        const rows = newAccessoryIds.map((pid, idx) => ({
+          outfit_id: outfitId, prenda_id: pid, slot: 'accessory', position: idx,
+        }))
+        const { error: insertError } = await supabase
+          .from('outfit_items').insert(rows)
+        if (insertError) throw new Error(insertError.message)
+      }
+
+      // Actualizar score
+      const { error: updateError } = await supabase
+        .from('outfits')
+        .update({ score: newScore })
+        .eq('id', outfitId)
+        .eq('user_id', user.id)
+
+      if (updateError) throw new Error(updateError.message)
+
+      // Estado local
+      setOutfitsGuardados((prev) =>
+        prev.map((o) =>
+          o.id === outfitId
+            ? {
+                ...o,
+                score:         newScore,
+                _accessories:  newAccessoryObjs,
+                accessory_ids: newAccessoryIds,
+                outfit_items: [
+                  ...(o.outfit_items || []).filter((i) => i.slot !== 'accessory'),
+                  ...newAccessoryIds.map((pid, idx) => ({
+                    outfit_id: outfitId, prenda_id: pid, slot: 'accessory', position: idx,
+                    prenda: newAccessoryObjs.find((a) => a.id === pid) || null,
+                  })),
+                ],
+              }
+            : o
+        )
+      )
+
+      return { error: null }
+    } catch (err) {
+      setError(err.message)
+      return { error: err.message }
+    }
+  }, [user])
+
+  // -----------------------------------------------------------
+  // DELETE outfit (outfit_items se borra en cascada por FK)
   // -----------------------------------------------------------
   const deleteOutfit = useCallback(async (outfitId) => {
     if (!user) return { error: 'No hay usuario autenticado' }
 
-    // outfit_accessories se borra en cascada por FK ON DELETE CASCADE
     const { error: deleteError } = await supabase
       .from('outfits')
       .delete()
@@ -340,24 +336,23 @@ export function useOutfits(prendas = []) {
   }, [user])
 
   // -----------------------------------------------------------
-  // SYNC: guarda el top N automáticamente
+  // SYNC top N automáticos
+  // (solo borra source='generated', respeta manuales)
   // -----------------------------------------------------------
   const syncTopOutfits = useCallback(async (topN = 5) => {
     if (!user || outfits.length === 0) return
 
     setLoading(true)
 
-    // 1. Borrar outfits GENERADOS anteriores (no borra manuales: Fase 4)
+    // Borrar solo generados (outfit_items en cascada)
     await supabase
       .from('outfits')
       .delete()
       .eq('user_id', user.id)
-      .eq('source', 'generated')   // solo los automáticos
+      .eq('source', 'generated')
 
-    // 2. Insertar los top N
-    const topOutfits = outfits.slice(0, topN)
-
-    for (const outfit of topOutfits) {
+    // Guardar top N con el nuevo save (dual-write automático)
+    for (const outfit of outfits.slice(0, topN)) {
       await saveOutfit({ ...outfit, source: 'generated' })
     }
 
@@ -365,17 +360,48 @@ export function useOutfits(prendas = []) {
   }, [user, outfits, saveOutfit])
 
   // -----------------------------------------------------------
-  // CREATE MANUAL OUTFIT — wrapper explícito sobre saveOutfit
+  // RE-MIGRAR un outfit concreto al nuevo formato
+  // Útil si algún outfit quedó sin outfit_items por algún error.
   // -----------------------------------------------------------
-  /**
-   * Crea un outfit marcado como 'manual'.
-   * Garantiza que source siempre sea 'manual' sin depender del caller.
-   *
-   * @param {Object} outfit - misma estructura que saveOutfit
-   */
-  const createManualOutfit = useCallback(async (outfit) => {
-    return saveOutfit({ ...outfit, source: 'manual' })
-  }, [saveOutfit])
+  const remigrarOutfit = useCallback(async (outfit) => {
+    if (!outfit.id) return { error: 'Outfit sin ID' }
+
+    const items = buildOutfitItems(outfit.id, {
+      top:         outfit._top,
+      bottom:      outfit._bottom,
+      shoes:       outfit._shoes,
+      outerwear:   outfit._outerwear    || null,
+      accessories: outfit._accessories  || [],
+    })
+
+    if (items.length === 0) return { error: 'Sin prendas en el outfit' }
+
+    // Borrar existentes primero (idempotente)
+    await supabase.from('outfit_items').delete().eq('outfit_id', outfit.id)
+
+    const { error: insertError } = await supabase
+      .from('outfit_items')
+      .insert(items)
+
+    if (insertError) return { error: insertError.message }
+
+    // Actualizar estado local
+    setOutfitsGuardados((prev) =>
+      prev.map((o) =>
+        o.id === outfit.id
+          ? { ...o, outfit_items: items.map((i) => ({
+                ...i, prenda: i.slot === 'top'       ? outfit._top
+                            : i.slot === 'bottom'    ? outfit._bottom
+                            : i.slot === 'shoes'     ? outfit._shoes
+                            : i.slot === 'outerwear' ? outfit._outerwear
+                            : (outfit._accessories || []).find((a) => a.id === i.prenda_id),
+              })), _source_format: 'outfit_items' }
+          : o
+      )
+    )
+
+    return { error: null }
+  }, [])
 
   return {
     outfits,
@@ -384,10 +410,11 @@ export function useOutfits(prendas = []) {
     error,
     saveOutfit,
     createManualOutfit,
-    updateOutfit,            // ← nuevo Fase 5
+    updateOutfit,
     deleteOutfit,
     updateOutfitAccessories,
     syncTopOutfits,
+    remigrarOutfit,            // ← nuevo: herramienta de migración
     refetch: fetchOutfitsGuardados,
   }
 }
